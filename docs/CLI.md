@@ -1,37 +1,34 @@
 # Kanban CLI guide
 
-The CLI talks to the same Convex functions as the web app. It is useful for small, explicit updates and for coding agents that need compact task context.
+Use this guide to work with Kanban from a terminal or coding agent. The CLI signs in through your browser and finds the server from `kanban.seridian.dev`; you do not need a Convex URL or API key.
 
 ## Install
 
-When the npm package is published:
-
-```sh
-npm install --global @seridian-dev/kanban-cli
-```
-
-To use the current preview from source:
+The npm release is not available yet. Install the public source version:
 
 ```sh
 git clone https://github.com/seridian-dev/kanban-cli.git
 cd kanban-cli
-bun install
-bun run build
-node dist/kanban.js agent-help
+npm install
+npm link
+kanban login
 ```
 
-## Configure a development workspace
+Your browser opens. Sign in to Kanban and choose **Authorize CLI**. After approval, return to your terminal.
+
+When the npm release is available, install it with `npm install --global @seridian-dev/kanban-cli` and skip the clone steps.
+
+## First use
 
 ```sh
-export KANBAN_URL=https://kanban.seridian.dev
-kanban login
 kanban auth whoami
-export KANBAN_PROJECT=KAN
-export KANBAN_USER="Dee or your agent label"
+kanban projects list
 kanban agent-help
 ```
 
-`KANBAN_USER` is an optional activity label. Sign in with `kanban login`; the CLI opens a browser and returns a short-lived session to this device. No Convex URL is needed. Use `kanban logout` to clear the local session.
+The CLI defaults to `https://kanban.seridian.dev`. To use another Kanban website, set `KANBAN_URL` to that website address. `KANBAN_PROJECT` and `KANBAN_USER` are optional defaults.
+
+Sign out on this computer with `kanban logout`. This removes its saved session; the short-lived session expires automatically.
 
 ## Everyday work
 
@@ -67,8 +64,8 @@ The full help text is available with `kanban help`. The server checks hierarchy,
 
 ## Agent safety
 
-1. Find a small, assigned slice with `items list` and `--limit`.
-2. Inspect one card using `items get` before editing it.
-3. Move it into progress and leave a brief comment as work proceeds.
-4. Ask before destructive actions; `items rm` requires `--yes` and deletes the item subtree.
-5. Never treat `KANBAN_USER` as an authentication token.
+1. Run `kanban agent-help` for the short workflow.
+2. Find a small assigned card with `items list` and `--limit`.
+3. Read the card with `items get` before editing it.
+4. Move it into progress and leave a short comment as work proceeds.
+5. Ask before deleting work. `items rm` requires `--yes` and deletes the card and its children.

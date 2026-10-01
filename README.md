@@ -1,54 +1,74 @@
-# @seridian-dev/kanban-cli
+# Kanban CLI
 
-The official command line interface for Kanban. Inspect work with compact JSON, update tasks, manage sprints, and connect Git activity to work items.
+Use Kanban from your terminal, or let your coding agent read and update work for you.
 
-The CLI signs in through Kanban in your browser. It discovers the backend from the product URL, so you never need to copy a Convex URL.
+**You only need a Kanban account.** The CLI finds the right server from `kanban.seridian.dev`. You never need a Convex URL or API key.
 
-## Install
+## Get started
 
-The package is prepared for the public npm scope; registry publication is pending npm organization access. The source repository is public now. To install and build the current Node.js preview:
+You need [Node.js 22 or newer](https://nodejs.org/) and a Kanban account.
+
+The npm release is not available yet. Install today from this public repository:
 
 ```sh
 git clone https://github.com/seridian-dev/kanban-cli.git
 cd kanban-cli
 npm install
-npm run build
-node dist/kanban.js agent-help
+npm link
+kanban login
 ```
 
-After `@seridian-dev/kanban-cli` is published, install it globally with:
+Your browser opens. Sign in to Kanban and select **Authorize CLI**. Return to your terminal when it says you’re signed in.
+
+## Try it
+
+```sh
+kanban auth whoami
+kanban projects list
+kanban items list --project KAN --limit 10
+kanban items get KAN-12
+```
+
+Replace `KAN` and `KAN-12` with your project and item keys. To see the short guide for coding agents, run:
+
+```sh
+kanban agent-help
+```
+
+It explains how to find a card, read its dependencies, start work, leave a progress note, and send the card to review.
+
+## Sign out
+
+```sh
+kanban logout
+```
+
+This removes the saved session from this computer. The short-lived session expires automatically.
+
+## For coding agents
+
+Give your agent this starting point:
+
+```text
+Use the Kanban CLI. First run `kanban agent-help`, then find your assigned card
+with `kanban items list --project <KEY> --assignee <YOUR NAME> --limit 10 --json`.
+Read the card before editing it. Keep updates small and leave a progress comment.
+```
+
+All commands are listed in the [CLI guide](docs/CLI.md). The source repository is [seridian-dev/kanban-cli](https://github.com/seridian-dev/kanban-cli).
+
+## Install from npm later
+
+Once the npm release is available, install it with:
 
 ```sh
 npm install --global @seridian-dev/kanban-cli
-kanban agent-help
-```
-
-## Configure
-
-```sh
-export KANBAN_URL=https://kanban.seridian.dev
-export KANBAN_PROJECT=KAN
 kanban login
-kanban auth whoami
-kanban agent-help
-kanban items list --status in_progress --limit 15 --compact --json
-kanban items get KAN-12 --json
-kanban comment add KAN-12 --body "Progress: ..."
 ```
 
-`KANBAN_USER` optionally sets the activity label shown on updates. Authentication comes from `kanban login`; use `kanban logout` to clear this device. See [CLI documentation](docs/CLI.md) for safe environment setup and the complete command reference.
-
-## Requirements
-
-- Node.js 22 or newer
-- A Kanban account and browser
-
-## Development
+## Develop the CLI
 
 ```sh
 npm install
-npm run build
 npm test
 ```
-
-The package is also tested with Bun during development.
