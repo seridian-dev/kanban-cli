@@ -1,6 +1,6 @@
 # Kanban CLI guide
 
-Use this guide to work with Kanban from a terminal or coding agent. The CLI signs in through your browser and finds the server from `kanban.seridian.dev`; you do not need a Convex URL or API key.
+Use this guide to work with Kanban from a terminal or coding agent. The CLI signs in through your browser and connects through `kanban.seridian.dev`.
 
 ## Install
 
@@ -26,7 +26,20 @@ kanban projects list
 kanban agent-help
 ```
 
-The CLI defaults to `https://kanban.seridian.dev`. To use another Kanban website, set `KANBAN_URL` to that website address. `KANBAN_PROJECT` and `KANBAN_USER` are optional defaults.
+The CLI defaults to `https://kanban.seridian.dev`. To use another Kanban website, set `KANBAN_URL` to that website address. `KANBAN_PROJECT` and `KANBAN_USER` are optional defaults. You can save those defaults locally instead:
+
+```sh
+kanban config set site https://kanban.seridian.dev
+kanban config set user dee
+kanban config set project KAN
+kanban config
+```
+
+The config file is `~/.config/kanban/config.json`, with owner-only permissions. It contains no credentials; login tokens remain in a separate protected file.
+
+Link a Git repo to a project once. From the repo root, run `kanban link --project KAN`. You can link a specific folder with `kanban link --project KAN --path ./packages/api`. Run `kanban context` in a nested folder to check the selected project. The nearest folder link wins, so a subfolder can point to a different project. Use `kanban links list` to review mappings and `kanban links remove --path ./packages/api` to remove one.
+
+Project selection is resolved in this order: `--project`, `KANBAN_PROJECT`, the nearest linked folder, then the saved default project. These are local settings; your repository stays untouched.
 
 Sign out on this computer with `kanban logout`. This removes its saved session; the short-lived session expires automatically.
 

@@ -10,9 +10,11 @@ import type { CliConvexClient } from "./client.js";
 import { AGENT_HELP, FULL_HELP } from "./help.js";
 import { DEFAULT_KANBAN_URL, resolveBackendUrl } from "./backend.js";
 import { browserLogin, clearToken, readAuth } from "./auth.js";
+import { gitRoot, linkedProject, readConfig, writeConfig } from "./config.js";
 import { formatChangelog, withGeneratedChangelog } from "./changelog.js";
 import { runGit } from "./git.js";
 import { readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { classifyError, compactItems, formatTable, formatTree, parseArgs, parseKey, pickSprint, readAll, splitList, UsageError, type Parsed } from "./lib.js";
 
 class CliError extends Error {
@@ -44,8 +46,56 @@ async function main(argv: string[]) {
   }
 
   const [group, sub, arg] = pos;
+  const config = await readConfig();
+  const auth = await readAuth();
+  const localSite = str(flags.url) ?? process.env.KANBAN_URL ?? config.site ?? auth?.site ?? DEFAULT_KANBAN_URL;
+  if (pos[0] === "config") {
+    if (!sub || sub === "show") return out(config, `Site: ${config.site ?? DEFAULT_KANBAN_URL}\nUser: ${config.user ?? "not set"}\nDefault project: ${config.project ?? "not set"}\nProject links: ${config.links?.length ?? 0}\nConfig: ~/.config/kanban/config.json (no credentials stored here)`);
+    if (sub === "set") {
+      const name = arg;
+      const value = pos[3] ?? str(flags.value);
+      if (!name || !value) throw usage("Use `kanban config set site|user|project VALUE`");
+      if (name === "site") {
+        if (/\.convex\.(cloud|site)(\/|$)/.test(value)) throw usage("Set the Kanban website URL, such as https://kanban.seridian.dev.");
+        config.site = new URL(value).origin;
+      } else if (name === "user") config.user = value;
+      else if (name === "project") config.project = value.toUpperCase();
+      else throw usage("Config keys are site, user, or project.");
+      await writeConfig(config);
+      return out(config, `Saved ${name} in ~/.config/kanban/config.json`);
+    }
+    throw usage("Use `kanban config [show]` or `kanban config set site|user|project VALUE`");
+  }
+  if (pos[0] === "link") {
+    const projectKey = str(flags.project)?.toUpperCase();
+    if (!projectKey || !/^[A-Z][A-Z0-9]{1,4}$/.test(projectKey)) throw usage("Use `kanban link --project KEY [--path .]`; KEY is a project key like KAN.");
+    const path = resolve(str(flags.path) ?? gitRoot());
+    config.links = [...(config.links ?? []).filter((link) => resolve(link.path) !== path), { path, project: projectKey }];
+    await writeConfig(config);
+    return out({ path, project: projectKey }, `Linked ${path} to ${projectKey}. Nested folders use this project unless they have a more specific link.`);
+  }
+  if (pos[0] === "links") {
+    if (sub === "list" || !sub) return out(config.links ?? [], (config.links?.length ? config.links.map((link) => `${link.project}  ${link.path}`).join("\n") : "No local project links yet. Run `kanban link --project KEY` inside a repo."));
+    if (sub === "remove" || sub === "unlink") {
+      const path = resolve(str(flags.path) ?? gitRoot());
+      const before = config.links?.length ?? 0;
+      config.links = (config.links ?? []).filter((link) => resolve(link.path) !== path);
+      await writeConfig(config);
+      return out({ removed: before - (config.links?.length ?? 0), path }, `Removed local project link for ${path}`);
+    }
+    throw usage("Use `kanban links list` or `kanban links remove [--path .]`");
+  }
+  if (pos[0] === "context") {
+    let root: string | undefined;
+    try { root = gitRoot(); } catch { /* Linking a plain folder is supported. */ }
+    const mapping = linkedProject(config);
+    const effectiveProject = str(flags.project)?.toUpperCase() ?? process.env.KANBAN_PROJECT?.toUpperCase() ?? mapping ?? config.project;
+    const context = { folder: process.cwd(), gitRoot: root, linkedProject: mapping, project: effectiveProject };
+    return out(context, `Folder: ${context.folder}\nGit repo: ${root ?? "none"}\nLinked project: ${mapping ?? "none"}\nActive project: ${effectiveProject ?? "not set"}`);
+  }
+
   if (group === "login" || (group === "auth" && sub === "login")) {
-    const site = str(flags.url) ?? process.env.KANBAN_URL ?? DEFAULT_KANBAN_URL;
+    const site = localSite;
     if (/\.convex\.(cloud|site)(\/|$)/.test(site)) throw usage("Sign-in needs the Kanban website URL, for example https://kanban.seridian.dev");
     await browserLogin(site);
     return;
@@ -56,17 +106,16 @@ async function main(argv: string[]) {
     return;
   }
 
-  const endpoint = str(flags.url) ?? process.env.KANBAN_URL ?? DEFAULT_KANBAN_URL;
+  const endpoint = localSite;
   let url: string;
   try { url = await resolveBackendUrl(endpoint); }
   catch (error) { throw new CliError(error instanceof Error ? error.message : String(error)); }
   const client = new ConvexHttpClient(url) as unknown as CliConvexClient;
-  const auth = await readAuth();
   if (auth?.token) (client as unknown as ConvexHttpClient).setAuth(auth.token);
-  const actor = str(flags.as) ?? process.env.KANBAN_USER ?? "cli";
+  const actor = str(flags.as) ?? process.env.KANBAN_USER ?? config.user ?? "cli";
   const project = () => {
-    const p = str(flags.project) ?? process.env.KANBAN_PROJECT;
-    if (!p) throw usage("--project KEY is required (or set KANBAN_PROJECT)");
+    const p = str(flags.project) ?? process.env.KANBAN_PROJECT ?? linkedProject(config) ?? config.project;
+    if (!p) throw usage("--project KEY is required. Or link this folder with `kanban link --project KEY`.");
     return p.toUpperCase();
   };
 

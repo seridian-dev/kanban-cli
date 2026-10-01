@@ -2,8 +2,9 @@ export const AGENT_HELP = `KANBAN CLI — agent quickstart (token-efficient)
 
 SETUP  KANBAN_URL=https://kanban.seridian.dev  KANBAN_USER=<agent name>  KANBAN_PROJECT=KAN
 AUTH   kanban login  → browser sign-in  ·  kanban auth whoami  ·  kanban logout
+LOCAL  kanban link --project KEY  → remember this repo  ·  kanban context
 
-FIRST RUN  kanban login → kanban auth whoami → kanban projects list
+FIRST RUN  kanban login → kanban auth whoami → kanban projects list → kanban link --project KEY
 WORK CARD kanban items list --project KAN --assignee "$KANBAN_USER" --status todo --limit 10 --compact --json
 INSPECT   kanban items get KAN-12 --json (read parent, dependencies, and comments before editing)
 START     kanban items move KAN-12 --status in_progress
@@ -11,9 +12,11 @@ UPDATE    kanban comment add KAN-12 --body "Progress: ...; next: ...; blocker: n
 QA        kanban items move KAN-12 --status in_review
 FINISH    kanban items move KAN-12 --status done (only after verifying the work)
 
-Use --project KEY or set KANBAN_PROJECT. Writes are validated by the server.
+Project lookup: --project > KANBAN_PROJECT > nearest linked folder > saved default.
+Use 'kanban config' for saved site/user/project settings and 'kanban links list' for links.
+Writes are validated by the server. Local settings live in ~/.config/kanban/config.json.
 Use --compact --limit N --json to keep large boards out of the context window.
-No Convex URL is needed. Login opens Kanban in your browser and asks you to approve this device.
+Login opens Kanban in your browser and asks you to approve this device.
 Run 'kanban help' for the full reference. Never use --yes to delete unless requested.
 `;
 
@@ -23,10 +26,15 @@ GET STARTED
   kanban login                              sign in safely in your browser
   kanban auth whoami                        check the account linked to this device
   kanban projects list                      choose a project
+  kanban link --project KEY                 link this Git repo to a project
+  kanban link --project KEY --path ./docs   link a folder to a project
+  kanban context                            show which project this folder uses
+  kanban links list                         list saved folder links
+  kanban config                             show saved site, user, and default project
   kanban agent-help                         get the coding-agent workflow
-  No Convex URL is needed; Kanban discovers the backend from its website.
+  Kanban discovers the service from its website.
 
-SETUP   export KANBAN_URL=https://kanban.seridian.dev  KANBAN_USER=<your agent name>  [KANBAN_PROJECT=KEY]
+SETUP   settings are saved in ~/.config/kanban/config.json; env vars override saved defaults
 AUTH    login opens a browser approval flow; logout clears the device session.
 EXIT    0 ok · 1 server/runtime error · 2 usage error · 3 not found
 KEYS    Items are addressed by key (KAN-12). Statuses: backlog todo in_progress in_review done.
@@ -56,6 +64,8 @@ WRITE
   kanban git prs --project KAN                     open PR/MR links grouped by card
   kanban git rotate-secret --project KAN --connection ID
   kanban sprints create --project KAN --name S1 [--goal .. --start .. --end ..] · sprints start|complete NAME --project KAN
+  kanban config set site https://kanban.seridian.dev · config set user dee · config set project KAN
+  kanban links remove [--path .]
 
 SAFE USE  Run 'tree' or 'items get' before restructuring. Prefer update --parent over delete+create.
           Re-parenting keeps history; deleting does not. Never pass --yes unless the user asked to delete.
