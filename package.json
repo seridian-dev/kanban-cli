@@ -4,15 +4,36 @@
   "description": "CLI for Kanban project planning, work items, sprints, and agent workflows.",
   "license": "MIT",
   "type": "module",
-  "engines": { "node": ">=22" },
-  "bin": { "kanban": "./dist/kanban.js" },
-  "files": ["dist", "README.md", "LICENSE"],
+  "repository": { "type": "git", "url": "https://github.com/seridian-dev/kanban-cli.git" },
+  "homepage": "https://github.com/seridian-dev/kanban-cli#readme",
+  "bugs": { "url": "https://github.com/seridian-dev/kanban-cli/issues" },
+  "keywords": ["kanban", "project-management", "cli", "coding-agents", "convex"],
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "kanban": "dist/kanban.js"
+  },
+  "files": [
+    "dist",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "prepare": "npm run build",
     "prepack": "npm run build",
     "test": "npm run build && node dist/kanban.js agent-help"
   },
-  "dependencies": { "convex": "^1.46.0" },
-  "devDependencies": { "@types/node": "^22.19.15", "typescript": "^5.9.2" },
-  "publishConfig": { "access": "public" }
+  "dependencies": {
+    "convex": "^1.46.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.15",
+    "typescript": "^5.9.2"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
 }

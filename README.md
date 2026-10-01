@@ -6,14 +6,21 @@ The official command line interface for Kanban. Inspect work with compact JSON, 
 
 ## Install
 
+The package is prepared for the public npm scope; registry publication is pending npm organization access. The source repository is public now. To install and build the current Node.js preview:
+
 ```sh
-npm install --global @seridian-dev/kanban-cli
+git clone https://github.com/seridian-dev/kanban-cli.git
+cd kanban-cli
+npm install
+npm run build
+node dist/kanban.js agent-help
 ```
 
-Or run without a global install:
+After `@seridian-dev/kanban-cli` is published, install it globally with:
 
 ```sh
-npx @seridian-dev/kanban-cli agent-help
+npm install --global @seridian-dev/kanban-cli
+kanban agent-help
 ```
 
 ## Configure
@@ -28,7 +35,7 @@ kanban items get KAN-12 --json
 kanban comment add KAN-12 --body "Progress: ..."
 ```
 
-`KANBAN_USER` is an activity label, not an authentication credential. See [CLI documentation](https://kanban.seridian.dev/support#developer-tools) for safe environment setup and the complete command reference.
+`KANBAN_USER` is an activity label, not an authentication credential. See [CLI documentation](docs/CLI.md) for safe environment setup and the complete command reference.
 
 ## Requirements
 
