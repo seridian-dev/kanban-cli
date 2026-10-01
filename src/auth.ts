@@ -14,7 +14,7 @@ export async function readAuth(): Promise<{ token: string; site?: string } | nul
 }
 export async function clearToken(): Promise<void> { await rm(authFile, { force: true }); }
 
-function openBrowser(url: string): void {
+export function openBrowser(url: string): void {
   const command = process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open";
   const args = process.platform === "win32" ? ["/c", "start", "", url] : [url];
   const child = spawn(command, args, { detached: true, stdio: "ignore" });

@@ -1,19 +1,20 @@
 export const AGENT_HELP = `KANBAN CLI — agent quickstart (token-efficient)
 
-SETUP  KANBAN_URL=https://kanban.seridian.dev  KANBAN_USER=<agent name>  KANBAN_PROJECT=KAN
+SETUP  KANBAN_URL=https://kanban.seridian.dev  KANBAN_USER=<agent name>  KANBAN_PROJECT=WEB
 AUTH   kanban login  → browser sign-in  ·  kanban auth whoami  ·  kanban logout
-LOCAL  kanban link --project KEY  → remember this repo  ·  kanban context
+LOCAL  kanban link --workspace acme --project WEB  → remember this repo  ·  kanban context
 
 FIRST RUN  kanban login → kanban auth whoami → kanban projects list → kanban link --project KEY
-WORK CARD kanban items list --project KAN --assignee "$KANBAN_USER" --status todo --limit 10 --compact --json
-INSPECT   kanban items get KAN-12 --json (read parent, dependencies, and comments before editing)
-START     kanban items move KAN-12 --status in_progress
-UPDATE    kanban comment add KAN-12 --body "Progress: ...; next: ...; blocker: none"
-QA        kanban items move KAN-12 --status in_review
-FINISH    kanban items move KAN-12 --status done (only after verifying the work)
+WORK CARD kanban items list --project WEB --assignee "$KANBAN_USER" --status todo --limit 10 --compact --json
+INSPECT   kanban items get WEB-12 --json (read parent, dependencies, and comments before editing)
+START     kanban items move WEB-12 --status in_progress
+UPDATE    kanban comment add WEB-12 --body "Progress: ...; next: ...; blocker: none"
+QA        kanban items move WEB-12 --status in_review
+FINISH    kanban items move WEB-12 --status done (only after verifying the work)
 
 Project lookup: --project > KANBAN_PROJECT > nearest linked folder > saved default.
-Use 'kanban config' for saved site/user/project settings and 'kanban links list' for links.
+Workspace lookup: --workspace > KANBAN_WORKSPACE > nearest linked folder > saved default.
+Use 'kanban config' for saved site/user/workspace/project settings and 'kanban links list' for links.
 Writes are validated by the server. Local settings live in ~/.config/kanban/config.json.
 Use --compact --limit N --json to keep large boards out of the context window.
 Login opens Kanban in your browser and asks you to approve this device.
@@ -26,9 +27,10 @@ GET STARTED
   kanban login                              sign in safely in your browser
   kanban auth whoami                        check the account linked to this device
   kanban projects list                      choose a project
-  kanban link --project KEY                 link this Git repo to a project
+  kanban link --workspace acme --project WEB  link this Git repo to a workspace project
   kanban link --project KEY --path ./docs   link a folder to a project
   kanban context                            show which project this folder uses
+  kanban projects open WEB                  open the selected workspace project
   kanban links list                         list saved folder links
   kanban config                             show saved site, user, and default project
   kanban agent-help                         get the coding-agent workflow
@@ -37,34 +39,34 @@ GET STARTED
 SETUP   settings are saved in ~/.config/kanban/config.json; env vars override saved defaults
 AUTH    login opens a browser approval flow; logout clears the device session.
 EXIT    0 ok · 1 server/runtime error · 2 usage error · 3 not found
-KEYS    Items are addressed by key (KAN-12). Statuses: backlog todo in_progress in_review done.
+KEYS    Items are addressed by key (WEB-12). Statuses: backlog todo in_progress in_review done.
         Types: epic story task bug subtask. Priorities: urgent high medium low none.
 HIERARCHY  epic > story|task|bug > subtask. Server rejects invalid parents/cycles (exit 1).
 
 READ
-  kanban tree KAN                               indented hierarchy of a project
-  kanban items list --project KAN [--status S --assignee A --type T --epic KAN-1 --q text --limit N --compact]
-  kanban items get KAN-12                       breadcrumb, children, dependencies, comments
-  kanban changelog KAN [--write CHANGELOG.md]    markdown of done work, grouped by day and epic
-  kanban projects list · sprints list --project KAN · comment list KAN-12
+  kanban tree WEB                               indented hierarchy of a project
+  kanban items list --project WEB [--status S --assignee A --type T --epic WEB-1 --q text --limit N --compact]
+  kanban items get WEB-12                       breadcrumb, children, dependencies, comments
+  kanban changelog WEB [--write CHANGELOG.md]    markdown of done work, grouped by day and epic
+  kanban projects list · sprints list --project WEB · comment list WEB-12
 
 WRITE
-  kanban projects create --key KAN --name "Name" [--description ..]
-  kanban items create --project KAN --type story --title "..." [--parent KAN-1 --status --priority --assignee --points N --start YYYY-MM-DD --due YYYY-MM-DD --labels a,b --sprint NAME --description ..]
-  kanban items update KAN-12 [--title --description --type --status --priority --assignee --points --start --due --labels --parent KAN-1 --depends-on KAN-3,KAN-4 --sprint NAME]
+  kanban projects create --key WEB --name "Name" [--description ..]
+  kanban items create --project WEB --type story --title "..." [--parent WEB-1 --status --priority --assignee --points N --start YYYY-MM-DD --due YYYY-MM-DD --labels a,b --sprint NAME --description ..]
+  kanban items update WEB-12 [--title --description --type --status --priority --assignee --points --start --due --labels --parent WEB-1 --depends-on WEB-3,WEB-4 --sprint NAME]
         "none" clears assignee/points/start/due/parent/depends-on/sprint.
-  kanban items move KAN-12 --status in_progress [--after KAN-5 --before KAN-6]
-  kanban items breakdown KAN-12 --text "a @sam\\nb"   (or pipe lines on stdin; epic→stories, others→subtasks)
-  kanban items distribute KAN-12 --people sam,alex   (balances unassigned children by open load)
-  kanban items bulk --ids KAN-1,KAN-2 [--status --assignee --priority --sprint NAME]
-  kanban items rm KAN-12 --yes                      deletes the whole subtree; --yes is mandatory
-  kanban comment add KAN-12 --body "..."
-  kanban git connect --project KAN --provider github --repo owner/name
-  kanban git status --project KAN · git links KAN-12 · git branch KAN-12
-  kanban git prs --project KAN                     open PR/MR links grouped by card
-  kanban git rotate-secret --project KAN --connection ID
-  kanban sprints create --project KAN --name S1 [--goal .. --start .. --end ..] · sprints start|complete NAME --project KAN
-  kanban config set site https://kanban.seridian.dev · config set user dee · config set project KAN
+  kanban items move WEB-12 --status in_progress [--after WEB-5 --before WEB-6]
+  kanban items breakdown WEB-12 --text "a @sam\\nb"   (or pipe lines on stdin; epic→stories, others→subtasks)
+  kanban items distribute WEB-12 --people sam,alex   (balances unassigned children by open load)
+  kanban items bulk --ids WEB-1,WEB-2 [--status --assignee --priority --sprint NAME]
+  kanban items rm WEB-12 --yes                      deletes the whole subtree; --yes is mandatory
+  kanban comment add WEB-12 --body "..."
+  kanban git connect --project WEB --provider github --repo owner/name
+  kanban git status --project WEB · git links WEB-12 · git branch WEB-12
+  kanban git prs --project WEB                     open PR/MR links grouped by card
+  kanban git rotate-secret --project WEB --connection ID
+  kanban sprints create --project WEB --name S1 [--goal .. --start .. --end ..] · sprints start|complete NAME --project WEB
+  kanban config set site https://kanban.seridian.dev · config set user alex · config set workspace acme · config set project WEB
   kanban links remove [--path .]
 
 SAFE USE  Run 'tree' or 'items get' before restructuring. Prefer update --parent over delete+create.

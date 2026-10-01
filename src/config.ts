@@ -7,7 +7,8 @@ export type LocalConfig = {
   site?: string;
   user?: string;
   project?: string;
-  links?: Array<{ path: string; project: string }>;
+  workspace?: string;
+  links?: Array<{ path: string; project: string; workspace?: string }>;
 };
 
 export const configFile = () => process.env.KANBAN_CONFIG_FILE ?? join(homedir(), ".config", "kanban", "config.json");
@@ -19,7 +20,8 @@ export async function readConfig(): Promise<LocalConfig> {
       site: typeof parsed.site === "string" ? parsed.site : undefined,
       user: typeof parsed.user === "string" ? parsed.user : undefined,
       project: typeof parsed.project === "string" ? parsed.project.toUpperCase() : undefined,
-      links: Array.isArray(parsed.links) ? parsed.links.filter((x) => x && typeof x.path === "string" && typeof x.project === "string").map((x) => ({ path: resolve(x.path), project: x.project.toUpperCase() })) : [],
+      workspace: typeof parsed.workspace === "string" ? parsed.workspace.toLowerCase() : undefined,
+      links: Array.isArray(parsed.links) ? parsed.links.filter((x) => x && typeof x.path === "string" && typeof x.project === "string").map((x) => ({ path: resolve(x.path), project: x.project.toUpperCase(), workspace: typeof x.workspace === "string" ? x.workspace.toLowerCase() : undefined })) : [],
     };
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return { links: [] };
@@ -40,9 +42,12 @@ export function gitRoot(cwd = process.cwd()): string {
 }
 
 export function linkedProject(config: LocalConfig, cwd = process.cwd()): string | undefined {
+  return linkedContext(config, cwd)?.project;
+}
+
+export function linkedContext(config: LocalConfig, cwd = process.cwd()): { project: string; workspace?: string } | undefined {
   const current = resolve(cwd);
   return [...(config.links ?? [])]
     .filter((link) => current === link.path || current.startsWith(link.path + "/"))
-    .sort((a, b) => b.path.length - a.path.length)[0]?.project;
+    .sort((a, b) => b.path.length - a.path.length)[0];
 }
-

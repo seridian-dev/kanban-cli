@@ -25,11 +25,11 @@ Your browser opens. Sign in to Kanban and select **Authorize CLI**. Return to yo
 ```sh
 kanban auth whoami
 kanban projects list
-kanban items list --project KAN --limit 10
-kanban items get KAN-12
+kanban items list --project WEB --limit 10
+kanban items get WEB-12
 ```
 
-Replace `KAN` and `KAN-12` with your project and item keys. To see the short guide for coding agents, run:
+Replace `WEB` and `WEB-12` with your own project and item keys. To see the short guide for coding agents, run:
 
 ```sh
 kanban agent-help
@@ -37,7 +37,7 @@ kanban agent-help
 
 It explains how to find a card, read its dependencies, start work, leave a progress note, and send the card to review.
 
-Save your name and default project with `kanban config set user dee` and `kanban config set project KAN`. From a repo, `kanban link --project KAN` remembers which project it belongs to. Run `kanban context` in any folder to check the selected project. These settings stay in `~/.config/kanban/config.json`; the CLI does not modify your repository.
+Save your name, workspace, and default project with `kanban config set user alex`, `kanban config set workspace acme`, and `kanban config set project WEB`. From a repo, `kanban link --workspace acme --project WEB` remembers both the workspace and project. Run `kanban context` in any folder to check the selected workspace and project, or `kanban projects open WEB` to open it in your browser. These settings stay in `~/.config/kanban/config.json`; the CLI does not modify your repository.
 
 ## Sign out
 

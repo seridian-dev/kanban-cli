@@ -7,7 +7,7 @@ export async function runGit(client: CliConvexClient, command: string | undefine
   const projectKey = typeof flags.project === "string" ? flags.project.toUpperCase() : process.env.KANBAN_PROJECT?.toUpperCase();
   if (command === "branch") {
     const key = arg ?? "";
-    if (!parseKey(key)) throw new Error("git branch requires an item key such as KAN-12");
+    if (!parseKey(key)) throw new Error("git branch requires an item key such as WEB-12");
     const detail = await client.query(api.agentApi.detail, { key });
     if (!detail) throw new Error("Item " + key + " not found");
     const branch = gitBranchName(detail.item.key, detail.item.title);
@@ -29,7 +29,7 @@ export async function runGit(client: CliConvexClient, command: string | undefine
     return { data: rows, human: rows.length ? rows.map((r) => r.provider + " " + r.repo + " " + (r.enabled ? "enabled" : "disabled")).join("\n") : "(no git connections)" };
   }
   if (command === "links") {
-    if (!arg || !parseKey(arg)) throw new Error("git links requires an item key such as KAN-12");
+    if (!arg || !parseKey(arg)) throw new Error("git links requires an item key such as WEB-12");
     const item = await client.query(api.agentApi.getByKey, { key: arg });
     if (!item) throw new Error("Item " + arg + " not found");
     const rows = await client.query(api.integrations.connections.listLinks, { workItemId: item._id });

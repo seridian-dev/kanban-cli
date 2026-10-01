@@ -9,8 +9,8 @@ import type { Id } from "./dataModel.js";
 import type { CliConvexClient } from "./client.js";
 import { AGENT_HELP, FULL_HELP } from "./help.js";
 import { DEFAULT_KANBAN_URL, resolveBackendUrl } from "./backend.js";
-import { browserLogin, clearToken, readAuth } from "./auth.js";
-import { gitRoot, linkedProject, readConfig, writeConfig } from "./config.js";
+import { browserLogin, clearToken, openBrowser, readAuth } from "./auth.js";
+import { gitRoot, linkedContext, readConfig, writeConfig } from "./config.js";
 import { formatChangelog, withGeneratedChangelog } from "./changelog.js";
 import { runGit } from "./git.js";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -50,7 +50,7 @@ async function main(argv: string[]) {
   const auth = await readAuth();
   const localSite = str(flags.url) ?? process.env.KANBAN_URL ?? config.site ?? auth?.site ?? DEFAULT_KANBAN_URL;
   if (pos[0] === "config") {
-    if (!sub || sub === "show") return out(config, `Site: ${config.site ?? DEFAULT_KANBAN_URL}\nUser: ${config.user ?? "not set"}\nDefault project: ${config.project ?? "not set"}\nProject links: ${config.links?.length ?? 0}\nConfig: ~/.config/kanban/config.json (no credentials stored here)`);
+    if (!sub || sub === "show") return out(config, `Site: ${config.site ?? DEFAULT_KANBAN_URL}\nUser: ${config.user ?? "not set"}\nDefault workspace: ${config.workspace ?? "not set"}\nDefault project: ${config.project ?? "not set"}\nProject links: ${config.links?.length ?? 0}\nConfig: ~/.config/kanban/config.json (no credentials stored here)`);
     if (sub === "set") {
       const name = arg;
       const value = pos[3] ?? str(flags.value);
@@ -60,7 +60,8 @@ async function main(argv: string[]) {
         config.site = new URL(value).origin;
       } else if (name === "user") config.user = value;
       else if (name === "project") config.project = value.toUpperCase();
-      else throw usage("Config keys are site, user, or project.");
+      else if (name === "workspace") config.workspace = value.toLowerCase();
+      else throw usage("Config keys are site, user, workspace, or project.");
       await writeConfig(config);
       return out(config, `Saved ${name} in ~/.config/kanban/config.json`);
     }
@@ -68,14 +69,15 @@ async function main(argv: string[]) {
   }
   if (pos[0] === "link") {
     const projectKey = str(flags.project)?.toUpperCase();
-    if (!projectKey || !/^[A-Z][A-Z0-9]{1,4}$/.test(projectKey)) throw usage("Use `kanban link --project KEY [--path .]`; KEY is a project key like KAN.");
+    if (!projectKey || !/^[A-Z][A-Z0-9]{1,4}$/.test(projectKey)) throw usage("Use `kanban link --project KEY [--path .]`; KEY is a project key like WEB.");
     const path = resolve(str(flags.path) ?? gitRoot());
-    config.links = [...(config.links ?? []).filter((link) => resolve(link.path) !== path), { path, project: projectKey }];
+    const workspace = (str(flags.workspace) ?? process.env.KANBAN_WORKSPACE ?? config.workspace)?.toLowerCase();
+    config.links = [...(config.links ?? []).filter((link) => resolve(link.path) !== path), { path, project: projectKey, workspace }];
     await writeConfig(config);
-    return out({ path, project: projectKey }, `Linked ${path} to ${projectKey}. Nested folders use this project unless they have a more specific link.`);
+    return out({ path, project: projectKey, workspace }, `Linked ${path} to ${workspace ? `${workspace}/` : ""}${projectKey}. Nested folders use this project unless they have a more specific link.`);
   }
   if (pos[0] === "links") {
-    if (sub === "list" || !sub) return out(config.links ?? [], (config.links?.length ? config.links.map((link) => `${link.project}  ${link.path}`).join("\n") : "No local project links yet. Run `kanban link --project KEY` inside a repo."));
+    if (sub === "list" || !sub) return out(config.links ?? [], (config.links?.length ? config.links.map((link) => `${link.workspace ? `${link.workspace}/` : ""}${link.project}  ${link.path}`).join("\n") : "No local project links yet. Run `kanban link --project KEY` inside a repo."));
     if (sub === "remove" || sub === "unlink") {
       const path = resolve(str(flags.path) ?? gitRoot());
       const before = config.links?.length ?? 0;
@@ -88,10 +90,11 @@ async function main(argv: string[]) {
   if (pos[0] === "context") {
     let root: string | undefined;
     try { root = gitRoot(); } catch { /* Linking a plain folder is supported. */ }
-    const mapping = linkedProject(config);
-    const effectiveProject = str(flags.project)?.toUpperCase() ?? process.env.KANBAN_PROJECT?.toUpperCase() ?? mapping ?? config.project;
-    const context = { folder: process.cwd(), gitRoot: root, linkedProject: mapping, project: effectiveProject };
-    return out(context, `Folder: ${context.folder}\nGit repo: ${root ?? "none"}\nLinked project: ${mapping ?? "none"}\nActive project: ${effectiveProject ?? "not set"}`);
+    const mapping = linkedContext(config);
+    const workspace = str(flags.workspace)?.toLowerCase() ?? process.env.KANBAN_WORKSPACE?.toLowerCase() ?? mapping?.workspace ?? config.workspace;
+    const effectiveProject = str(flags.project)?.toUpperCase() ?? process.env.KANBAN_PROJECT?.toUpperCase() ?? mapping?.project ?? config.project;
+    const context = { folder: process.cwd(), gitRoot: root, linkedProject: mapping?.project, workspace, project: effectiveProject };
+    return out(context, `Folder: ${context.folder}\nGit repo: ${root ?? "none"}\nWorkspace: ${workspace ?? "not set"}\nLinked project: ${mapping ? `${mapping.workspace ? `${mapping.workspace}/` : ""}${mapping.project}` : "none"}\nActive project: ${effectiveProject ?? "not set"}`);
   }
 
   if (group === "login" || (group === "auth" && sub === "login")) {
@@ -113,22 +116,54 @@ async function main(argv: string[]) {
   const client = new ConvexHttpClient(url) as unknown as CliConvexClient;
   if (auth?.token) (client as unknown as ConvexHttpClient).setAuth(auth.token);
   const actor = str(flags.as) ?? process.env.KANBAN_USER ?? config.user ?? "cli";
+  const workspaceSlug = () => str(flags.workspace)?.toLowerCase() ?? process.env.KANBAN_WORKSPACE?.toLowerCase() ?? linkedContext(config)?.workspace ?? config.workspace;
+  const workspaceFor = async (slug = workspaceSlug()) => {
+    if (!slug) return undefined;
+    const workspace = await client.query(api.organizations.getBySlug, { slug });
+    if (!workspace) throw new CliError(`Workspace ${slug} not found or unavailable`, 3);
+    return workspace;
+  };
+  const inferredWorkspaceSlugs = new Map<string, Promise<string | undefined>>();
+  const workspaceForProject = (key: string): Promise<string | undefined> => {
+    const projectKey = key.toUpperCase();
+    const selected = workspaceSlug();
+    if (selected) return Promise.resolve(selected);
+    const cached = inferredWorkspaceSlugs.get(projectKey);
+    if (cached) return cached;
+    const result = (async () => {
+      const projects = await client.query(api.projects.list, {});
+      const matches = projects.filter((candidate) => candidate.key === projectKey);
+      if (matches.length > 1) {
+        const workspaces = await client.query(api.organizations.listMine, {});
+        const locations = matches.map((candidate) => {
+          const workspace = workspaces.find((row) => row._id === candidate.organizationId);
+          return workspace?.slug ?? "personal";
+        });
+        throw usage(`Project ${projectKey} exists in multiple workspaces (${locations.join(", ")}). Pass --workspace SLUG or link this folder to one.`);
+      }
+      if (!matches[0]?.organizationId) return undefined;
+      const workspaces = await client.query(api.organizations.listMine, {});
+      return workspaces.find((row) => row._id === matches[0].organizationId)?.slug;
+    })();
+    inferredWorkspaceSlugs.set(projectKey, result);
+    return result;
+  };
   const project = () => {
-    const p = str(flags.project) ?? process.env.KANBAN_PROJECT ?? linkedProject(config) ?? config.project;
+    const p = str(flags.project) ?? process.env.KANBAN_PROJECT ?? linkedContext(config)?.project ?? config.project;
     if (!p) throw usage("--project KEY is required. Or link this folder with `kanban link --project KEY`.");
     return p.toUpperCase();
   };
 
   const idOf = async (key: string): Promise<Id<"workItems">> => {
-    if (!parseKey(key)) throw usage(`"${key}" is not an item key like KAN-12`);
-    const item = await client.query(api.agentApi.getByKey, { key });
+    if (!parseKey(key)) throw usage(`"${key}" is not an item key like WEB-12`);
+    const item = await client.query(api.agentApi.getByKey, { key, workspaceSlug: await workspaceForProject(parseKey(key)!.project) });
     if (!item) throw new CliError(`Item ${key.toUpperCase()} not found`, 3);
     return item._id;
   };
   const idsOf = async (keys: string[]) => Promise.all(keys.map(idOf));
 
   const sprintOf = async (ref: string, projectKey: string): Promise<Id<"sprints">> => {
-    const p = await client.query(api.projects.getByKey, { key: projectKey });
+    const p = await client.query(api.projects.getByKey, { key: projectKey, workspaceSlug: await workspaceForProject(projectKey) });
     if (!p) throw new CliError(`Project ${projectKey} not found`, 3);
     const sprints = await client.query(api.sprints.listByProject, { projectId: p._id });
     const hit = pickSprint(sprints, ref);
@@ -149,20 +184,32 @@ async function main(argv: string[]) {
     }
     case "projects": {
       if (sub === "list") {
-        const ps = await client.query(api.projects.list, {});
+        const selected = await workspaceFor();
+        const ps = await client.query(api.projects.list, selected ? { organizationId: selected.id } : {});
         return out(ps, formatTable(["KEY", "NAME"], ps.map((p) => [p.key, p.name])));
       }
       if (sub === "create") {
         const key = req(flags, "key").toUpperCase();
-        await client.mutation(api.projects.create, { name: req(flags, "name"), key, description: str(flags.description) ?? "" });
+        const selected = await workspaceFor();
+        await client.mutation(api.projects.create, { name: req(flags, "name"), key, description: str(flags.description) ?? "", organizationId: selected?.id });
         return out({ key }, `Created project ${key}`);
+      }
+      if (sub === "open") {
+        const key = (arg ?? project()).toUpperCase();
+        const selected = await client.query(api.projects.getByKey, { key, workspaceSlug: await workspaceForProject(key) });
+        if (!selected) throw new CliError(`Project ${key} not found`, 3);
+        const target = selected.workspaceSlug ? `${selected.workspaceSlug}/p/${key}/board` : `p/${key}/board`;
+        const site = new URL(localSite);
+        const url = new URL(target, site).toString();
+        openBrowser(url);
+        return out({ url }, `Opened ${selected.workspaceSlug ? `${selected.workspaceSlug}/` : ""}${key} in your browser`);
       }
       break;
     }
 
     case "changelog": {
       const key = (sub ?? project()).toUpperCase();
-      const rows = await client.query(api.changelog.doneItems, { projectKey: key });
+      const rows = await client.query(api.changelog.doneItems, { projectKey: key, workspaceSlug: await workspaceForProject(key) });
       if (!rows) throw new CliError(`Project ${key} not found`, 3);
       const md = formatChangelog(key, rows);
       const file = str(flags.write);
@@ -189,7 +236,7 @@ async function main(argv: string[]) {
 
     case "tree": {
       const key = (sub ?? project()).toUpperCase();
-      const rows = await client.query(api.agentApi.tree, { projectKey: key });
+      const rows = await client.query(api.agentApi.tree, { projectKey: key, workspaceSlug: await workspaceForProject(key) });
       if (!rows) throw new CliError(`Project ${key} not found`, 3);
       return out(rows, formatTree(rows));
     }
@@ -202,6 +249,7 @@ async function main(argv: string[]) {
         }
         const allRows = await client.query(api.agentApi.search, {
           projectKey: project(),
+          workspaceSlug: await workspaceForProject(project()),
           q: str(flags.q),
           status: str(flags.status) as never,
           assignee: str(flags.assignee),
@@ -215,7 +263,7 @@ async function main(argv: string[]) {
       }
       if (sub === "get") {
         const key = need(arg, "item key");
-        const d = await client.query(api.agentApi.detail, { key });
+        const d = await client.query(api.agentApi.detail, { key, workspaceSlug: await workspaceForProject(parseKey(key)?.project ?? project()) });
         if (!d) throw new CliError(`Item ${key.toUpperCase()} not found`, 3);
         const i = d.item;
         const human = [
@@ -230,7 +278,7 @@ async function main(argv: string[]) {
       }
       if (sub === "create") {
         const pk = project();
-        const p = await client.query(api.projects.getByKey, { key: pk });
+        const p = await client.query(api.projects.getByKey, { key: pk, workspaceSlug: await workspaceForProject(pk) });
         if (!p) throw new CliError(`Project ${pk} not found`, 3);
         const id = await client.mutation(api.workItems.create, {
           projectId: p._id,
@@ -290,7 +338,7 @@ async function main(argv: string[]) {
         const key = need(arg, "item key");
         const id = await idOf(key);
         if (flags.yes !== true) {
-          const rows = await client.query(api.agentApi.search, { projectKey: projectOfKey(key), epicKey: key });
+          const rows = await client.query(api.agentApi.search, { projectKey: projectOfKey(key), epicKey: key, workspaceSlug: await workspaceForProject(projectOfKey(key)) });
           throw usage(`Refusing to delete ${key.toUpperCase()} and its subtree (${rows.length} item(s)) without --yes`);
         }
         const r = await client.mutation(api.workItems.remove, { id, actor });
@@ -312,7 +360,7 @@ async function main(argv: string[]) {
       }
       if (sub === "bulk") {
         const keys = splitList(str(flags.ids));
-        if (keys.length === 0) throw usage("--ids KAN-1,KAN-2 is required");
+        if (keys.length === 0) throw usage("--ids WEB-1,WEB-2 is required");
         const ids = await idsOf(keys);
         const pk = projectOfKey(keys[0]);
         const n = await client.mutation(api.workItems.bulkUpdate, {
@@ -344,7 +392,7 @@ async function main(argv: string[]) {
 
     case "sprints": {
       const pk = project();
-      const p = await client.query(api.projects.getByKey, { key: pk });
+      const p = await client.query(api.projects.getByKey, { key: pk, workspaceSlug: await workspaceForProject(pk) });
       if (!p) throw new CliError(`Project ${pk} not found`, 3);
       if (sub === "list") {
         const ss = await client.query(api.sprints.listByProject, { projectId: p._id });

@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { linkedProject, readConfig, writeConfig } from "./config.js";
+import { linkedContext, linkedProject, readConfig, writeConfig } from "./config.js";
 
 test("local project links resolve the most specific parent folder", async () => {
   const dir = await mkdtemp(join(tmpdir(), "kanban-cli-config-"));
@@ -11,15 +11,16 @@ test("local project links resolve the most specific parent folder", async () => 
   const previous = process.env.KANBAN_CONFIG_FILE;
   process.env.KANBAN_CONFIG_FILE = file;
   try {
-    await writeConfig({ site: "https://kanban.seridian.dev", project: "KAN", links: [
-      { path: "/work", project: "KAN" },
-      { path: "/work/tools", project: "OPS" },
+    await writeConfig({ site: "https://kanban.seridian.dev", project: "WEB", links: [
+      { path: "/work", project: "WEB" },
+      { path: "/work/tools", project: "OPS", workspace: "Acme" },
     ] });
     const config = await readConfig();
-    assert.equal(linkedProject(config, "/work/app/src"), "KAN");
+    assert.equal(linkedProject(config, "/work/app/src"), "WEB");
     assert.equal(linkedProject(config, "/work/tools/cli/src"), "OPS");
+    assert.deepEqual(linkedContext(config, "/work/tools/cli/src"), { path: "/work/tools", project: "OPS", workspace: "acme" });
     assert.equal(linkedProject(config, "/other"), undefined);
-    assert.equal((await readFile(file, "utf8")).includes("KAN"), true);
+    assert.equal((await readFile(file, "utf8")).includes("WEB"), true);
   } finally {
     if (previous === undefined) delete process.env.KANBAN_CONFIG_FILE;
     else process.env.KANBAN_CONFIG_FILE = previous;
@@ -33,8 +34,8 @@ test("saved config is written with owner-only permissions", async () => {
   const previous = process.env.KANBAN_CONFIG_FILE;
   process.env.KANBAN_CONFIG_FILE = file;
   try {
-    await writeConfig({ user: "Dee", project: "kan" });
-    assert.equal((await readConfig()).project, "KAN");
+    await writeConfig({ user: "Alex", project: "web" });
+    assert.equal((await readConfig()).project, "WEB");
     const { mode } = await (await import("node:fs/promises")).stat(file);
     assert.equal(mode & 0o777, 0o600);
   } finally {

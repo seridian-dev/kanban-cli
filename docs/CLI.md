@@ -30,14 +30,15 @@ The CLI defaults to `https://kanban.seridian.dev`. To use another Kanban website
 
 ```sh
 kanban config set site https://kanban.seridian.dev
-kanban config set user dee
-kanban config set project KAN
+kanban config set user alex
+kanban config set workspace acme
+kanban config set project WEB
 kanban config
 ```
 
 The config file is `~/.config/kanban/config.json`, with owner-only permissions. It contains no credentials; login tokens remain in a separate protected file.
 
-Link a Git repo to a project once. From the repo root, run `kanban link --project KAN`. You can link a specific folder with `kanban link --project KAN --path ./packages/api`. Run `kanban context` in a nested folder to check the selected project. The nearest folder link wins, so a subfolder can point to a different project. Use `kanban links list` to review mappings and `kanban links remove --path ./packages/api` to remove one.
+Link a Git repo to a project once. From the repo root, run `kanban link --workspace acme --project WEB`. You can link a specific folder with `kanban link --workspace acme --project WEB --path ./packages/api`. Run `kanban context` in a nested folder to check the selected workspace and project. The nearest folder link wins, so a subfolder can point to a different workspace project. Use `kanban links list` to review mappings and `kanban links remove --path ./packages/api` to remove one. `kanban projects open WEB` opens that project in the browser.
 
 Project selection is resolved in this order: `--project`, `KANBAN_PROJECT`, the nearest linked folder, then the saved default project. These are local settings; your repository stays untouched.
 
@@ -47,10 +48,10 @@ Sign out on this computer with `kanban logout`. This removes its saved session; 
 
 ```sh
 kanban items list --status in_progress --limit 15 --compact --json
-kanban items get KAN-12 --json
-kanban items move KAN-12 --status in_progress
-kanban comment add KAN-12 --body "Progress: implementation started"
-kanban changelog KAN
+kanban items get WEB-12 --json
+kanban items move WEB-12 --status in_progress
+kanban comment add WEB-12 --body "Progress: implementation started"
+kanban changelog WEB
 ```
 
 `KANBAN_PROJECT` supplies the default project key. Pass `--project KEY` when working across projects. Add `--json` for machine output, and combine `--compact` with `--limit` to keep output small.
@@ -59,17 +60,17 @@ kanban changelog KAN
 
 ```text
 kanban projects list
-kanban tree KAN
-kanban items list --project KAN [--status S --assignee A --type T --epic KAN-1 --q text --limit N --compact]
-kanban items get KAN-12
-kanban items create --project KAN --type story --title "..."
-kanban items update KAN-12 --status in_review
-kanban items move KAN-12 --status in_progress
-kanban items breakdown KAN-12 --text "Validate API @sam\nAdd review screen @dee"
-kanban sprints list --project KAN
-kanban comment add KAN-12 --body "..."
-kanban changelog KAN [--write CHANGELOG.md]
-kanban git status --project KAN
+kanban tree WEB
+kanban items list --project WEB [--status S --assignee A --type T --epic WEB-1 --q text --limit N --compact]
+kanban items get WEB-12
+kanban items create --project WEB --type story --title "..."
+kanban items update WEB-12 --status in_review
+kanban items move WEB-12 --status in_progress
+kanban items breakdown WEB-12 --text "Validate API @sam\nAdd review screen @alex"
+kanban sprints list --project WEB
+kanban comment add WEB-12 --body "..."
+kanban changelog WEB [--write CHANGELOG.md]
+kanban git status --project WEB
 kanban agent-help
 ```
 
