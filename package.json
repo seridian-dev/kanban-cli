@@ -1,0 +1,18 @@
+{
+  "name": "@seridian-dev/kanban-cli",
+  "version": "0.1.0",
+  "description": "CLI for Kanban project planning, work items, sprints, and agent workflows.",
+  "license": "MIT",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "bin": { "kanban": "./dist/kanban.js" },
+  "files": ["dist", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build",
+    "test": "npm run build && node dist/kanban.js agent-help"
+  },
+  "dependencies": { "convex": "^1.46.0" },
+  "devDependencies": { "@types/node": "^22.19.15", "typescript": "^5.9.2" },
+  "publishConfig": { "access": "public" }
+}
