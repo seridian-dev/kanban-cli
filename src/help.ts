@@ -1,25 +1,33 @@
-export const AGENT_HELP = `kanban agent help — short, safe, token-efficient workflow.
+export const AGENT_HELP = `KANBAN CLI — agent quickstart (token-efficient)
 
-SETUP  KANBAN_URL=<dev Convex URL>  KANBAN_USER=<agent name>  KANBAN_PROJECT=KAN
+SETUP  KANBAN_URL=https://kanban.seridian.dev  KANBAN_USER=<agent name>  KANBAN_PROJECT=KAN
+AUTH   kanban login  → browser sign-in  ·  kanban auth whoami  ·  kanban logout
 
-1. Find a small slice of work:
-   kanban items list --status in_progress --limit 15 --compact --json
-2. Inspect one card before changing it:
-   kanban items get KAN-12 --json
-3. Start or finish work:
-   kanban items move KAN-12 --status in_progress
-   kanban items move KAN-12 --status done
-4. Leave a short, useful update:
-   kanban comment add KAN-12 --body "Progress: ..."
+FIRST RUN  kanban login → kanban auth whoami → kanban projects list
+WORK CARD kanban items list --project KAN --assignee "$KANBAN_USER" --status todo --limit 10 --compact --json
+INSPECT   kanban items get KAN-12 --json (read parent, dependencies, and comments before editing)
+START     kanban items move KAN-12 --status in_progress
+UPDATE    kanban comment add KAN-12 --body "Progress: ...; next: ...; blocker: none"
+QA        kanban items move KAN-12 --status in_review
+FINISH    kanban items move KAN-12 --status done (only after verifying the work)
 
 Use --project KEY or set KANBAN_PROJECT. Writes are validated by the server.
 Use --compact --limit N --json to keep large boards out of the context window.
-Run 'kanban help' for the complete command list. Never use --yes to delete unless requested.
+No Convex URL is needed. Login opens Kanban in your browser and asks you to approve this device.
+Run 'kanban help' for the full reference. Never use --yes to delete unless requested.
 `;
 
 export const FULL_HELP = `kanban — CLI for project work. Add --json for machine-readable output.
 
-SETUP   export KANBAN_URL=https://<deployment>.convex.cloud  KANBAN_USER=<your agent name>  [KANBAN_PROJECT=KEY]
+GET STARTED
+  kanban login                              sign in safely in your browser
+  kanban auth whoami                        check the account linked to this device
+  kanban projects list                      choose a project
+  kanban agent-help                         get the coding-agent workflow
+  No Convex URL is needed; Kanban discovers the backend from its website.
+
+SETUP   export KANBAN_URL=https://kanban.seridian.dev  KANBAN_USER=<your agent name>  [KANBAN_PROJECT=KEY]
+AUTH    login opens a browser approval flow; logout clears the device session.
 EXIT    0 ok · 1 server/runtime error · 2 usage error · 3 not found
 KEYS    Items are addressed by key (KAN-12). Statuses: backlog todo in_progress in_review done.
         Types: epic story task bug subtask. Priorities: urgent high medium low none.

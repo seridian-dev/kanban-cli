@@ -23,13 +23,15 @@ node dist/kanban.js agent-help
 ## Configure a development workspace
 
 ```sh
-export KANBAN_URL=https://<development-deployment>.convex.cloud
+export KANBAN_URL=https://kanban.seridian.dev
+kanban login
+kanban auth whoami
 export KANBAN_PROJECT=KAN
 export KANBAN_USER="Dee or your agent label"
 kanban agent-help
 ```
 
-`KANBAN_USER` is an activity label, not proof of identity. The current preview does not have per-user CLI credentials. Use only local or development workspaces until secure, revocable, workspace-scoped login is released. Never put production or customer data into this preview.
+`KANBAN_USER` is an optional activity label. Sign in with `kanban login`; the CLI opens a browser and returns a short-lived session to this device. No Convex URL is needed. Use `kanban logout` to clear the local session.
 
 ## Everyday work
 

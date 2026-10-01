@@ -24,7 +24,7 @@
     "build": "tsc -p tsconfig.json",
     "prepare": "npm run build",
     "prepack": "npm run build",
-    "test": "npm run build && node dist/kanban.js agent-help"
+    "test": "npm run build && node --test dist/backend.test.js && node dist/kanban.js agent-help"
   },
   "dependencies": {
     "convex": "^1.46.0"

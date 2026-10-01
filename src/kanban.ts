@@ -8,6 +8,8 @@ import { api } from "./api.js";
 import type { Id } from "./dataModel.js";
 import type { CliConvexClient } from "./client.js";
 import { AGENT_HELP, FULL_HELP } from "./help.js";
+import { DEFAULT_KANBAN_URL, resolveBackendUrl } from "./backend.js";
+import { browserLogin, clearToken, readAuth } from "./auth.js";
 import { formatChangelog, withGeneratedChangelog } from "./changelog.js";
 import { runGit } from "./git.js";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -41,9 +43,26 @@ async function main(argv: string[]) {
     return;
   }
 
-  const url = str(flags.url) ?? process.env.KANBAN_URL ?? process.env.NEXT_PUBLIC_CONVEX_URL ?? process.env.CONVEX_URL;
-  if (!url) throw usage("No backend URL. Set KANBAN_URL or pass --url https://<deployment>.convex.cloud");
+  const [group, sub, arg] = pos;
+  if (group === "login" || (group === "auth" && sub === "login")) {
+    const site = str(flags.url) ?? process.env.KANBAN_URL ?? DEFAULT_KANBAN_URL;
+    if (/\.convex\.(cloud|site)(\/|$)/.test(site)) throw usage("Sign-in needs the Kanban website URL, for example https://kanban.seridian.dev");
+    await browserLogin(site);
+    return;
+  }
+  if (group === "logout" || (group === "auth" && sub === "logout")) {
+    await clearToken();
+    console.log("Signed out of Kanban CLI on this device.");
+    return;
+  }
+
+  const endpoint = str(flags.url) ?? process.env.KANBAN_URL ?? DEFAULT_KANBAN_URL;
+  let url: string;
+  try { url = await resolveBackendUrl(endpoint); }
+  catch (error) { throw new CliError(error instanceof Error ? error.message : String(error)); }
   const client = new ConvexHttpClient(url) as unknown as CliConvexClient;
+  const auth = await readAuth();
+  if (auth?.token) (client as unknown as ConvexHttpClient).setAuth(auth.token);
   const actor = str(flags.as) ?? process.env.KANBAN_USER ?? "cli";
   const project = () => {
     const p = str(flags.project) ?? process.env.KANBAN_PROJECT;
@@ -69,9 +88,16 @@ async function main(argv: string[]) {
   };
   const projectOfKey = (key: string) => parseKey(key)!.project;
 
-  const [group, sub, arg] = pos;
-
   switch (group) {
+    case "auth": {
+      if (sub === "whoami") {
+        if (!auth?.token) throw new CliError("You are not signed in. Run `kanban login` to open Kanban in your browser.");
+        const user = await client.query(api.auth.getCurrentUser, {});
+        if (!user) throw new CliError("Your Kanban session expired. Run `kanban login` to sign in again.");
+        return out(user, `${user.name ?? "Kanban user"} <${user.email}>`);
+      }
+      break;
+    }
     case "projects": {
       if (sub === "list") {
         const ps = await client.query(api.projects.list, {});
@@ -317,7 +343,10 @@ async function readStdin(): Promise<string> {
 
 main(process.argv.slice(2)).catch((e) => {
   const json = process.argv.includes("--json");
-  const message = e instanceof CliError || e instanceof UsageError ? e.message : cleanServerError(e);
+  let message = e instanceof CliError || e instanceof UsageError ? e.message : cleanServerError(e);
+  if (/unauthenticated|not authenticated|invalid auth token|invalid jwt/i.test(message)) {
+    message += "\nSign in or refresh this device with `kanban login`, then retry.";
+  }
   const code = e instanceof CliError ? e.code : e instanceof UsageError ? 2 : classifyError(message);
   if (json) console.error(JSON.stringify({ error: message, code }));
   else console.error(`error: ${message}`);

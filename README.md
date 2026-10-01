@@ -2,7 +2,7 @@
 
 The official command line interface for Kanban. Inspect work with compact JSON, update tasks, manage sprints, and connect Git activity to work items.
 
-> **Preview:** Current CLI authentication is being upgraded to secure, revocable, workspace-scoped credentials. Until that work ships, use this preview only with local or development data. Never point it at production or send it customer data.
+The CLI signs in through Kanban in your browser. It discovers the backend from the product URL, so you never need to copy a Convex URL.
 
 ## Install
 
@@ -26,21 +26,22 @@ kanban agent-help
 ## Configure
 
 ```sh
-export KANBAN_URL=https://<development-deployment>.convex.cloud
+export KANBAN_URL=https://kanban.seridian.dev
 export KANBAN_PROJECT=KAN
-export KANBAN_USER="your name or agent label"
+kanban login
+kanban auth whoami
 kanban agent-help
 kanban items list --status in_progress --limit 15 --compact --json
 kanban items get KAN-12 --json
 kanban comment add KAN-12 --body "Progress: ..."
 ```
 
-`KANBAN_USER` is an activity label, not an authentication credential. See [CLI documentation](docs/CLI.md) for safe environment setup and the complete command reference.
+`KANBAN_USER` optionally sets the activity label shown on updates. Authentication comes from `kanban login`; use `kanban logout` to clear this device. See [CLI documentation](docs/CLI.md) for safe environment setup and the complete command reference.
 
 ## Requirements
 
 - Node.js 22 or newer
-- A Kanban Convex deployment URL
+- A Kanban account and browser
 
 ## Development
 
