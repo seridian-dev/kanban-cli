@@ -1,6 +1,6 @@
 export const AGENT_HELP = `KANBAN CLI — agent quickstart (token-efficient)
 
-SETUP  KANBAN_URL=https://kanban.seridian.dev  KANBAN_USER=<agent name>  KANBAN_PROJECT=WEB
+SETUP  kanban login  (site defaults to https://kanban.seridian.dev)
 AUTH   kanban login  → browser sign-in  ·  kanban auth whoami  ·  kanban logout
 LOCAL  kanban link --workspace acme --project WEB  → remember this repo  ·  kanban context
 

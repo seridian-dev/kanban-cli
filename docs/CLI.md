@@ -4,19 +4,15 @@ Use this guide to work with Kanban from a terminal or coding agent. The CLI sign
 
 ## Install
 
-The npm release is not available yet. Install the public source version:
+Install the published package with npm:
 
 ```sh
-git clone https://github.com/seridian-dev/kanban-cli.git
-cd kanban-cli
-npm install
-npm link
+npm install -g @seridian/kanban-cli
 kanban login
+kanban agent-help
 ```
 
 Your browser opens. Sign in to Kanban and choose **Authorize CLI**. After approval, return to your terminal.
-
-When the npm release is available, install it with `npm install --global @seridian-dev/kanban-cli` and skip the clone steps.
 
 ## First use
 
@@ -26,7 +22,7 @@ kanban projects list
 kanban agent-help
 ```
 
-The CLI defaults to `https://kanban.seridian.dev`. To use another Kanban website, set `KANBAN_URL` to that website address. `KANBAN_PROJECT` and `KANBAN_USER` are optional defaults. You can save those defaults locally instead:
+The CLI connects to `https://kanban.seridian.dev` by default, so you do not need to set `KANBAN_URL`. To use another Kanban website, set `KANBAN_URL` to that website address. `KANBAN_PROJECT` and `KANBAN_USER` are optional defaults. You can save those defaults locally:
 
 ```sh
 kanban config set site https://kanban.seridian.dev

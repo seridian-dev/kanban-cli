@@ -8,14 +8,12 @@ Use Kanban from your terminal, or let your coding agent read and update work for
 
 You need [Node.js 22 or newer](https://nodejs.org/) and a Kanban account.
 
-The npm release is not available yet. Install today from this public repository:
+Install the published package with npm:
 
 ```sh
-git clone https://github.com/seridian-dev/kanban-cli.git
-cd kanban-cli
-npm install
-npm link
+npm install -g @seridian/kanban-cli
 kanban login
+kanban agent-help
 ```
 
 Your browser opens. Sign in to Kanban and select **Authorize CLI**. Return to your terminal when it says you’re signed in.
@@ -49,24 +47,18 @@ This removes the saved session from this computer. The short-lived session expir
 
 ## For coding agents
 
+For the full agent workflow—including browser authorization, project selection, finding and inspecting assigned work, status updates, blockers, and safe completion—see [docs/AGENT_WORKFLOW.md](docs/AGENT_WORKFLOW.md). This repository also has [AGENTS.md](AGENTS.md) instructions for agents that automatically read repository guidance.
+
 Give your agent this starting point:
 
 ```text
 Use the Kanban CLI. First run `kanban agent-help`, then find your assigned card
 with `kanban items list --project <KEY> --assignee <YOUR NAME> --limit 10 --json`.
-Read the card before editing it. Keep updates small and leave a progress comment.
+Read the card before editing it. Follow `docs/AGENT_WORKFLOW.md`, keep updates
+small, and leave a progress comment. Do not mark work done unless it is complete.
 ```
 
 All commands are listed in the [CLI guide](docs/CLI.md). The source repository is [seridian-dev/kanban-cli](https://github.com/seridian-dev/kanban-cli).
-
-## Install from npm later
-
-Once the npm release is available, install it with:
-
-```sh
-npm install --global @seridian-dev/kanban-cli
-kanban login
-```
 
 ## Develop the CLI
 
