@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
-import { extractItemKeys, hookScript, hooksStatus, installHooks, outgoingCommitMessages, parsePushRefs, setActiveItem, readActiveItem } from "./hooks.js";
+import { extractItemKeys, hookScript, hooksStatus, installHooks, outgoingCommitMessages, parsePushRefs, setActiveItem, readActiveItem, validateHookItems } from "./hooks.js";
 
 test("pre-push refs parse and malformed input fails closed", () => {
   assert.deepEqual(parsePushRefs("refs/heads/main abc refs/heads/main def\n"), [
@@ -20,6 +20,15 @@ test("item references are normalized and de-duplicated", () => {
 test("managed hooks invoke the CLI stage check", () => {
   assert.match(hookScript("pre-commit"), /exec kanban hooks check --stage pre-commit/);
   assert.match(hookScript("pre-push"), /exec kanban hooks check --stage pre-push/);
+});
+
+test("item validation enforces the selected project and approved state", async () => {
+  const fetchItem = async (key: string) => ({ key, status: "in_progress" });
+  assert.deepEqual(await validateHookItems(["WEB-12"], "web", ["in_progress", "in_review"], fetchItem), [{ key: "WEB-12", status: "in_progress" }]);
+  await assert.rejects(validateHookItems(["KAN-12"], "WEB", ["in_progress"], fetchItem), /linked to WEB/);
+  await assert.rejects(validateHookItems(["WEB-12"], "WEB", ["in_progress"], async () => null), /was not found/);
+  await assert.rejects(validateHookItems(["WEB-12"], "WEB", ["in_progress"], async () => ({ key: "WEB-12", status: "todo" })), /expected in_progress/);
+  await assert.rejects(validateHookItems(["WEB-12"], "WEB", ["in_progress"], async () => { throw new Error("offline"); }), /Could not validate WEB-12 with Kanban: offline/);
 });
 
 test("installer is idempotent, records the active item, and preserves existing hooks", async () => {
@@ -45,6 +54,16 @@ test("installer is idempotent, records the active item, and preserves existing h
   await assert.rejects(installHooks(customRoot), /Existing pre-commit hook left untouched/);
   assert.equal(await readFile(customHook, "utf8"), contents);
   assert.equal(await readFile(join(customRoot, ".git", "hooks", "pre-push"), "utf8").catch(() => ""), "");
+
+  const configuredRoot = await mkdtemp(join(tmpdir(), "kanban-hooks-configured-"));
+  execFileSync("git", ["init", "-q"], { cwd: configuredRoot });
+  execFileSync("git", ["config", "core.hooksPath", ".custom-hooks"], { cwd: configuredRoot });
+  assert.deepEqual((await installHooks(configuredRoot)).installed, ["pre-commit", "pre-push"]);
+  assert.deepEqual(await hooksStatus(configuredRoot), [
+    { stage: "pre-commit", installed: true },
+    { stage: "pre-push", installed: true },
+  ]);
+  assert.equal(await readFile(join(configuredRoot, ".git", "hooks", "pre-commit"), "utf8").catch(() => ""), "");
 });
 
 test("outgoing commit messages are returned separately for per-commit checks", async () => {

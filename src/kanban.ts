@@ -13,7 +13,7 @@ import { browserLogin, clearToken, openBrowser, readAuth } from "./auth.js";
 import { gitRoot, linkedContext, readConfig, writeConfig } from "./config.js";
 import { formatChangelog, withGeneratedChangelog } from "./changelog.js";
 import { runGit } from "./git.js";
-import { extractItemKeys, hooksStatus, installHooks, outgoingCommitMessages, parsePushRefs, readActiveItem, setActiveItem } from "./hooks.js";
+import { extractItemKeys, hooksStatus, installHooks, outgoingCommitMessages, parsePushRefs, readActiveItem, setActiveItem, validateHookItems } from "./hooks.js";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { classifyError, compactItems, formatTable, formatTree, parseArgs, parseKey, pickSprint, readAll, splitList, UsageError, type Parsed } from "./lib.js";
@@ -196,10 +196,12 @@ async function main(argv: string[]) {
       const stage = str(flags.stage);
       if (stage === "pre-commit") {
         const key = await readActiveItem();
-        const detail = await client.query(api.agentApi.detail, { key, workspaceSlug: await workspaceForProject(parseKey(key)!.project) });
-        if (!detail) throw new CliError(`Active item ${key} not found`, 3);
-        if (!["in_progress", "in_review"].includes(detail.item.status)) throw new CliError(`Active item ${key} is ${detail.item.status}; move it to in_progress or in_review before committing.`);
-        return out({ stage, key, status: detail.item.status }, `Kanban check passed: ${key} (${detail.item.status}).`);
+        const selectedProject = project();
+        const items = await validateHookItems([key], selectedProject, ["in_progress", "in_review"], async (itemKey) => {
+          const detail = await client.query(api.agentApi.detail, { key: itemKey, workspaceSlug: await workspaceForProject(selectedProject) });
+          return detail ? { key: itemKey, status: detail.item.status } : null;
+        });
+        return out({ stage, key, status: items[0].status }, `Kanban check passed: ${key} (${items[0].status}).`);
       }
       if (stage === "pre-push") {
         const refs = parsePushRefs(await readStdin());
@@ -208,11 +210,11 @@ async function main(argv: string[]) {
         const keysByCommit = messages.map(extractItemKeys);
         if (keysByCommit.some((commitKeys) => commitKeys.length === 0)) throw new CliError("Every outgoing commit must reference a Kanban item key (for example KAN-185).", 2);
         const keys = [...new Set(keysByCommit.flat())];
-        for (const key of keys) {
-          const detail = await client.query(api.agentApi.detail, { key, workspaceSlug: await workspaceForProject(parseKey(key)!.project) });
-          if (!detail) throw new CliError(`Referenced item ${key} not found`, 3);
-          if (!["in_progress", "in_review", "done"].includes(detail.item.status)) throw new CliError(`Referenced item ${key} is ${detail.item.status}; move it to in_progress, in_review, or done before pushing.`);
-        }
+        const selectedProject = project();
+        const items = await validateHookItems(keys, selectedProject, ["in_progress", "in_review", "done"], async (key) => {
+          const detail = await client.query(api.agentApi.detail, { key, workspaceSlug: await workspaceForProject(selectedProject) });
+          return detail ? { key, status: detail.item.status } : null;
+        });
         return out({ stage, keys }, `Kanban check passed for ${keys.join(", ")}.`);
       }
       throw usage("Use `--stage pre-commit` or `--stage pre-push`.");

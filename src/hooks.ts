@@ -27,6 +27,41 @@ function gitPath(cwd: string, ...args: string[]): string {
   return execFileSync("git", ["rev-parse", ...args], { cwd, encoding: "utf8" }).trim();
 }
 
+function hooksDirectory(cwd: string): string {
+  try {
+    const configured = execFileSync("git", ["config", "--path", "--get", "core.hooksPath"], { cwd, encoding: "utf8" }).trim();
+    if (configured) {
+      const root = gitPath(cwd, "--show-toplevel");
+      return resolve(root, configured);
+    }
+  } catch { /* Git's default hooks directory is used when unset. */ }
+  return resolve(cwd, gitPath(cwd, "--git-path", "hooks"));
+}
+
+export type HookItem = { key: string; status: string };
+
+export async function validateHookItems(
+  keys: readonly string[],
+  selectedProject: string,
+  acceptedStatuses: readonly string[],
+  fetchItem: (key: string) => Promise<HookItem | null>,
+): Promise<HookItem[]> {
+  const expectedProject = selectedProject.toUpperCase();
+  const result: HookItem[] = [];
+  for (const key of [...new Set(keys)]) {
+    const match = /^([A-Z][A-Z0-9]{1,4})-\d+$/.exec(key);
+    if (!match) throw new Error(`Invalid Kanban item key: ${key}`);
+    if (match[1] !== expectedProject) throw new Error(`${key} belongs to project ${match[1]}, but this repository is linked to ${expectedProject}.`);
+    let item: HookItem | null;
+    try { item = await fetchItem(key); }
+    catch (error) { throw new Error(`Could not validate ${key} with Kanban: ${error instanceof Error ? error.message : String(error)}`); }
+    if (!item) throw new Error(`Kanban item ${key} was not found in project ${expectedProject}.`);
+    if (!acceptedStatuses.includes(item.status)) throw new Error(`Kanban item ${key} is ${item.status}; expected ${acceptedStatuses.join(" or ")}.`);
+    result.push(item);
+  }
+  return result;
+}
+
 export function activeItemFile(cwd = process.cwd()): string {
   return resolve(cwd, gitPath(cwd, "--git-path", "kanban-item"));
 }
@@ -53,7 +88,7 @@ export async function readActiveItem(cwd = process.cwd()): Promise<string> {
 }
 
 export async function installHooks(cwd = process.cwd()): Promise<{ installed: string[] }> {
-  const hooksDir = resolve(cwd, gitPath(cwd, "--git-path", "hooks"));
+  const hooksDir = hooksDirectory(cwd);
   await mkdir(hooksDir, { recursive: true });
   const existingHooks = await Promise.all((["pre-commit", "pre-push"] as const).map(async (stage) => {
     try { return [stage, await readFile(join(hooksDir, stage), "utf8")] as const; }
@@ -78,7 +113,7 @@ export async function installHooks(cwd = process.cwd()): Promise<{ installed: st
 }
 
 export async function hooksStatus(cwd = process.cwd()): Promise<Array<{ stage: string; installed: boolean }>> {
-  const hooksDir = resolve(cwd, gitPath(cwd, "--git-path", "hooks"));
+  const hooksDir = hooksDirectory(cwd);
   return Promise.all((["pre-commit", "pre-push"] as const).map(async (stage) => {
     try { return { stage, installed: (await readFile(join(hooksDir, stage), "utf8")) === hookScript(stage) }; }
     catch { return { stage, installed: false }; }
