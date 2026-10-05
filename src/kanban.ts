@@ -13,6 +13,7 @@ import { browserLogin, clearToken, openBrowser, readAuth } from "./auth.js";
 import { gitRoot, linkedContext, readConfig, writeConfig } from "./config.js";
 import { formatChangelog, withGeneratedChangelog } from "./changelog.js";
 import { runGit } from "./git.js";
+import { extractItemKeys, hooksStatus, installHooks, outgoingCommitMessages, parsePushRefs, readActiveItem, setActiveItem } from "./hooks.js";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { classifyError, compactItems, formatTable, formatTree, parseArgs, parseKey, pickSprint, readAll, splitList, UsageError, type Parsed } from "./lib.js";
@@ -86,6 +87,24 @@ async function main(argv: string[]) {
       return out({ removed: before - (config.links?.length ?? 0), path }, `Removed local project link for ${path}`);
     }
     throw usage("Use `kanban links list` or `kanban links remove [--path .]`");
+  }
+  if (group === "hooks" && sub !== "check") {
+    if (sub === "install") {
+      const result = await installHooks();
+      return out(result, result.installed.length ? `Installed ${result.installed.join(" and ")} Kanban hooks.` : "Kanban hooks are already installed.");
+    }
+    if (sub === "set-item") {
+      const key = need(arg, "item key").toUpperCase();
+      await setActiveItem(key);
+      return out({ activeItem: key }, `Active item set to ${key} for this Git repository.`);
+    }
+    if (sub === "doctor") {
+      const statuses = await hooksStatus();
+      const activeItem = await readActiveItem().catch(() => undefined);
+      const result = { activeItem, hooks: statuses };
+      return out(result, `Active item: ${activeItem ?? "not set"}\nHooks: ${statuses.map((s) => `${s.stage} ${s.installed ? "installed" : "not installed"}`).join(", ")}`);
+    }
+    throw usage("Use `kanban hooks install`, `kanban hooks set-item KEY`, `kanban hooks doctor`, or `kanban hooks check --stage STAGE`.");
   }
   if (pos[0] === "context") {
     let root: string | undefined;
@@ -173,6 +192,31 @@ async function main(argv: string[]) {
   const projectOfKey = (key: string) => parseKey(key)!.project;
 
   switch (group) {
+    case "hooks": {
+      const stage = str(flags.stage);
+      if (stage === "pre-commit") {
+        const key = await readActiveItem();
+        const detail = await client.query(api.agentApi.detail, { key, workspaceSlug: await workspaceForProject(parseKey(key)!.project) });
+        if (!detail) throw new CliError(`Active item ${key} not found`, 3);
+        if (!["in_progress", "in_review"].includes(detail.item.status)) throw new CliError(`Active item ${key} is ${detail.item.status}; move it to in_progress or in_review before committing.`);
+        return out({ stage, key, status: detail.item.status }, `Kanban check passed: ${key} (${detail.item.status}).`);
+      }
+      if (stage === "pre-push") {
+        const refs = parsePushRefs(await readStdin());
+        const messages = outgoingCommitMessages(refs);
+        if (!messages.length) return out({ stage, keys: [] }, "Kanban check passed: no outgoing commits.");
+        const keysByCommit = messages.map(extractItemKeys);
+        if (keysByCommit.some((commitKeys) => commitKeys.length === 0)) throw new CliError("Every outgoing commit must reference a Kanban item key (for example KAN-185).", 2);
+        const keys = [...new Set(keysByCommit.flat())];
+        for (const key of keys) {
+          const detail = await client.query(api.agentApi.detail, { key, workspaceSlug: await workspaceForProject(parseKey(key)!.project) });
+          if (!detail) throw new CliError(`Referenced item ${key} not found`, 3);
+          if (!["in_progress", "in_review", "done"].includes(detail.item.status)) throw new CliError(`Referenced item ${key} is ${detail.item.status}; move it to in_progress, in_review, or done before pushing.`);
+        }
+        return out({ stage, keys }, `Kanban check passed for ${keys.join(", ")}.`);
+      }
+      throw usage("Use `--stage pre-commit` or `--stage pre-push`.");
+    }
     case "auth": {
       if (sub === "whoami") {
         if (!auth?.token) throw new CliError("You are not signed in. Run `kanban login` to open Kanban in your browser.");

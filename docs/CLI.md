@@ -79,3 +79,16 @@ The full help text is available with `kanban help`. The server checks hierarchy,
 3. Read the card with `items get` before editing it.
 4. Move it into progress and leave a short comment as work proceeds.
 5. Ask before deleting work. `items rm` requires `--yes` and deletes the card and its children.
+
+## Git hooks
+
+From the repository where you want local checks, link it to a Kanban project, set the active card, then install the hooks:
+
+```sh
+kanban link --project WEB
+kanban hooks set-item WEB-12
+kanban hooks install
+kanban hooks doctor
+```
+
+The pre-commit check requires the active item to be `in_progress` or `in_review`. The pre-push check requires outgoing commits to reference at least one item key and checks that each referenced item exists and is `in_progress`, `in_review`, or `done`. Checks need a working CLI login and Kanban connection; a missing login, stale item, or network failure blocks the Git operation with an error. Set a new active item with `kanban hooks set-item KEY` when switching work. The installer leaves existing hooks untouched and asks you to chain the Kanban check manually. These are local workflow checks and can be bypassed; require CI status checks and branch protection when enforcement must be reliable.

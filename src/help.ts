@@ -32,6 +32,9 @@ GET STARTED
   kanban context                            show which project this folder uses
   kanban projects open WEB                  open the selected workspace project
   kanban links list                         list saved folder links
+  kanban hooks install                      install local pre-commit and pre-push checks
+  kanban hooks set-item WEB-12              set this repository's active work item
+  kanban hooks doctor                       inspect hook and active-item setup
   kanban config                             show saved site, user, and default project
   kanban agent-help                         get the coding-agent workflow
   Kanban discovers the service from its website.
@@ -61,6 +64,7 @@ WRITE
   kanban items bulk --ids WEB-1,WEB-2 [--status --assignee --priority --sprint NAME]
   kanban items rm WEB-12 --yes                      deletes the whole subtree; --yes is mandatory
   kanban comment add WEB-12 --body "..."
+  kanban hooks install | set-item KEY | doctor
   kanban git connect --project WEB --provider github --repo owner/name
   kanban git status --project WEB · git links WEB-12 · git branch WEB-12
   kanban git prs --project WEB                     open PR/MR links grouped by card
