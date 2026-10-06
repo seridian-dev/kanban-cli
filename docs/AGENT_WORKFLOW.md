@@ -17,7 +17,7 @@ If `kanban` is not on `PATH`, this CLI has not been published to npm yet. Use th
 node /path/to/kanban-cli/dist/kanban.js agent-help
 ```
 
-If the CLI reports that the device is not authorized or the session expired, tell the user that a one-time browser approval is needed and ask them to run `kanban login` in their terminal. The agent cannot finish that interactive approval on the user's behalf. After they approve the device, retry `kanban auth whoami`.
+If the CLI reports that the token expired, tell the user that browser approval is needed and ask them to run `kanban login` in their terminal. The agent cannot finish that interactive approval on the user's behalf. Tokens expire after three days. After login completes, retry `kanban auth whoami`.
 
 Never ask the user to paste a token or password into chat or a card comment. The CLI stores its session locally outside the repository.
 

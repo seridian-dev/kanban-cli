@@ -1,13 +1,24 @@
 {
   "name": "@seridian/kanban-cli",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "CLI for Kanban project planning, work items, sprints, and agent workflows.",
   "license": "MIT",
   "type": "module",
-  "repository": { "type": "git", "url": "https://github.com/seridian-dev/kanban-cli.git" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/seridian-dev/kanban-cli.git"
+  },
   "homepage": "https://github.com/seridian-dev/kanban-cli#readme",
-  "bugs": { "url": "https://github.com/seridian-dev/kanban-cli/issues" },
-  "keywords": ["kanban", "project-management", "cli", "coding-agents", "convex"],
+  "bugs": {
+    "url": "https://github.com/seridian-dev/kanban-cli/issues"
+  },
+  "keywords": [
+    "kanban",
+    "project-management",
+    "cli",
+    "coding-agents",
+    "convex"
+  ],
   "engines": {
     "node": ">=22"
   },
@@ -22,9 +33,8 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "prepare": "npm run build",
-    "prepack": "npm run build",
-    "test": "npm run build && node --test dist/backend.test.js dist/config.test.js dist/hooks.test.js && node dist/kanban.js agent-help"
+    "prepare": "npm run build && node -e \"const fs=require('node:fs'); for(const name of fs.readdirSync('dist')) if(name.endsWith('.test.js') || name.endsWith('.test.js.map') || name.endsWith('.test.d.ts')) fs.rmSync('dist/'+name)\"",
+    "test": "npm run build && node --test dist/auth.test.js dist/backend.test.js dist/config.test.js dist/hooks.test.js && node dist/kanban.js agent-help"
   },
   "dependencies": {
     "convex": "^1.46.0"
