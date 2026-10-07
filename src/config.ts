@@ -8,7 +8,7 @@ export type LocalConfig = {
   user?: string;
   project?: string;
   workspace?: string;
-  links?: Array<{ path: string; project: string; workspace?: string }>;
+  links?: Array<{ path: string; project: string; workspace?: string; github?: string }>;
 };
 
 export const configFile = () => process.env.KANBAN_CONFIG_FILE ?? join(homedir(), ".config", "kanban", "config.json");
@@ -21,7 +21,7 @@ export async function readConfig(): Promise<LocalConfig> {
       user: typeof parsed.user === "string" ? parsed.user : undefined,
       project: typeof parsed.project === "string" ? parsed.project.toUpperCase() : undefined,
       workspace: typeof parsed.workspace === "string" ? parsed.workspace.toLowerCase() : undefined,
-      links: Array.isArray(parsed.links) ? parsed.links.filter((x) => x && typeof x.path === "string" && typeof x.project === "string").map((x) => ({ path: resolve(x.path), project: x.project.toUpperCase(), workspace: typeof x.workspace === "string" ? x.workspace.toLowerCase() : undefined })) : [],
+      links: Array.isArray(parsed.links) ? parsed.links.filter((x) => x && typeof x.path === "string" && typeof x.project === "string").map((x) => ({ path: resolve(x.path), project: x.project.toUpperCase(), workspace: typeof x.workspace === "string" ? x.workspace.toLowerCase() : undefined, ...(typeof x.github === "string" ? { github: x.github } : {}) })) : [],
     };
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return { links: [] };
@@ -45,9 +45,20 @@ export function linkedProject(config: LocalConfig, cwd = process.cwd()): string 
   return linkedContext(config, cwd)?.project;
 }
 
-export function linkedContext(config: LocalConfig, cwd = process.cwd()): { project: string; workspace?: string } | undefined {
+export function linkedContext(config: LocalConfig, cwd = process.cwd()): { project: string; workspace?: string; github?: string } | undefined {
   const current = resolve(cwd);
   return [...(config.links ?? [])]
     .filter((link) => current === link.path || current.startsWith(link.path + "/"))
     .sort((a, b) => b.path.length - a.path.length)[0];
+}
+
+/** owner/name from a GitHub remote URL (https or ssh), else undefined. */
+export function parseGithubRemote(url: string): string | undefined {
+  return /github\.com[:/]([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/.exec(url.trim())?.[1];
+}
+
+/** The GitHub repo this checkout pushes to: origin (your fork), never an upstream remote. */
+export function detectGithubRepo(cwd = process.cwd()): string | undefined {
+  try { return parseGithubRemote(execFileSync("git", ["remote", "get-url", "origin"], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] })); }
+  catch { return undefined; }
 }
