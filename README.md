@@ -70,3 +70,16 @@ All commands are listed in the [CLI guide](docs/CLI.md). The source repository i
 npm install
 npm test
 ```
+
+## Releasing
+
+Releases publish to npm from GitHub Actions with [trusted publishing](https://docs.npmjs.com/trusted-publishers), so there is no npm token.
+
+```bash
+npm version minor --no-git-tag-version   # or patch / major
+git commit -am "chore: release X.Y.Z" && git push   # via a PR to main
+git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z
+```
+
+The `Publish to npm` workflow checks the tag matches `package.json`, runs the tests, publishes with provenance, and creates the GitHub release. To publish an existing tag, run it manually (Actions → Publish to npm → Run workflow).
+
