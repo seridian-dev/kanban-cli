@@ -34,7 +34,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "prepare": "npm run build && node -e \"const fs=require('node:fs'); for(const name of fs.readdirSync('dist')) if(name.endsWith('.test.js') || name.endsWith('.test.js.map') || name.endsWith('.test.d.ts')) fs.rmSync('dist/'+name)\"",
-    "test": "npm run build && node --test dist/auth.test.js dist/backend.test.js dist/config.test.js dist/hooks.test.js dist/update-check.test.js && node dist/kanban.js agent-help"
+    "test": "npm run build && node --test dist/auth.test.js dist/backend.test.js dist/config.test.js dist/hooks.test.js dist/update-check.test.js dist/gh-sync.test.js && node dist/kanban.js agent-help"
   },
   "dependencies": {
     "convex": "^1.46.0"

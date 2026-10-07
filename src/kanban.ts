@@ -10,9 +10,10 @@ import type { CliConvexClient } from "./client.js";
 import { AGENT_HELP, FULL_HELP } from "./help.js";
 import { DEFAULT_KANBAN_URL, resolveBackendUrl } from "./backend.js";
 import { browserLogin, clearToken, openBrowser, readAuth } from "./auth.js";
-import { gitRoot, linkedContext, readConfig, writeConfig } from "./config.js";
+import { detectGithubRepo, gitRoot, linkedContext, readConfig, writeConfig } from "./config.js";
 import { formatChangelog, withGeneratedChangelog } from "./changelog.js";
 import { runGit } from "./git.js";
+import { formatReport, syncGithub } from "./gh-sync.js";
 import { extractItemKeys, hooksStatus, installHooks, outgoingCommitMessages, parsePushRefs, readActiveItem, setActiveItem, validateHookItems } from "./hooks.js";
 import { readFileSync, writeFileSync } from "node:fs";
 import { checkForUpdate, shouldShowUpdateNotice, updateInstallCommand } from "./update-check.js";
@@ -87,9 +88,12 @@ async function runMain(argv: string[]) {
     if (!projectKey || !/^[A-Z][A-Z0-9]{1,4}$/.test(projectKey)) throw usage("Use `kanban link --project KEY [--path .]`; KEY is a project key like WEB.");
     const path = resolve(str(flags.path) ?? gitRoot());
     const workspace = (str(flags.workspace) ?? process.env.KANBAN_WORKSPACE ?? config.workspace)?.toLowerCase();
-    config.links = [...(config.links ?? []).filter((link) => resolve(link.path) !== path), { path, project: projectKey, workspace }];
+    const github = str(flags.github) ?? detectGithubRepo(path);
+    const previous = (config.links ?? []).find((link) => resolve(link.path) === path);
+    const boardUrl = str(flags["board-url"]) ?? previous?.boardUrl;
+    config.links = [...(config.links ?? []).filter((link) => resolve(link.path) !== path), { path, project: projectKey, workspace, github, ...(boardUrl ? { boardUrl } : {}) }];
     await writeConfig(config);
-    return out({ path, project: projectKey, workspace }, `Linked ${path} to ${workspace ? `${workspace}/` : ""}${projectKey}. Nested folders use this project unless they have a more specific link.`);
+    return out({ path, project: projectKey, workspace, github }, `Linked ${path} to ${workspace ? `${workspace}/` : ""}${projectKey}.${github ? ` GitHub: ${github} (used by \`kanban gh sync\`).` : ""} Nested folders use this project unless they have a more specific link.`);
   }
   if (pos[0] === "links") {
     if (sub === "list" || !sub) return out(config.links ?? [], (config.links?.length ? config.links.map((link) => `${link.workspace ? `${link.workspace}/` : ""}${link.project}  ${link.path}`).join("\n") : "No local project links yet. Run `kanban link --project KEY` inside a repo."));
@@ -126,8 +130,9 @@ async function runMain(argv: string[]) {
     const mapping = linkedContext(config);
     const workspace = str(flags.workspace)?.toLowerCase() ?? process.env.KANBAN_WORKSPACE?.toLowerCase() ?? mapping?.workspace ?? config.workspace;
     const effectiveProject = str(flags.project)?.toUpperCase() ?? process.env.KANBAN_PROJECT?.toUpperCase() ?? mapping?.project ?? config.project;
-    const context = { folder: process.cwd(), gitRoot: root, linkedProject: mapping?.project, workspace, project: effectiveProject };
-    return out(context, `Folder: ${context.folder}\nGit repo: ${root ?? "none"}\nWorkspace: ${workspace ?? "not set"}\nLinked project: ${mapping ? `${mapping.workspace ? `${mapping.workspace}/` : ""}${mapping.project}` : "none"}\nActive project: ${effectiveProject ?? "not set"}`);
+    const github = mapping?.github ?? (root ? detectGithubRepo(root) : undefined);
+    const context = { folder: process.cwd(), gitRoot: root, github, linkedProject: mapping?.project, workspace, project: effectiveProject };
+    return out(context, `Folder: ${context.folder}\nGit repo: ${root ?? "none"}\nGitHub: ${github ?? "none"}\nWorkspace: ${workspace ?? "not set"}\nLinked project: ${mapping ? `${mapping.workspace ? `${mapping.workspace}/` : ""}${mapping.project}` : "none"}\nActive project: ${effectiveProject ?? "not set"}`);
   }
 
   if (group === "login" || (group === "auth" && sub === "login")) {
@@ -318,6 +323,30 @@ async function runMain(argv: string[]) {
         if (/requires|--project|--provider|--repo|--connection|Unknown git/.test(message)) throw usage(message);
         throw e;
       }
+    }
+
+    case "gh": {
+      if (sub !== "sync") throw usage("Unknown gh command. Supported: sync");
+      const pk = await project();
+      // --repo, else the repo saved by `kanban link`, else this checkout's origin (your fork, never upstream).
+      const repo = str(flags.repo) ?? linkedContext(config)?.github ?? detectGithubRepo();
+      if (!repo) throw usage("--repo owner/name is required (no GitHub origin remote found)");
+      const workspaceSlug = await workspaceForProject(pk);
+      const dryRun = flags["dry-run"] === true;
+      const lines: string[] = [];
+      const report = await syncGithub(client, {
+        projectKey: pk,
+        workspaceSlug,
+        repo,
+        actor,
+        boardUrl: str(flags["board-url"]) ?? linkedContext(config)?.boardUrl,
+        dryRun,
+        includeDone: flags["include-done"] === true,
+        comments: flags["no-comments"] !== true,
+        relink: flags.relink === true,
+        log: (line) => { lines.push(line); if (!json) console.error(line); },
+      });
+      return out({ repo, project: pk, dryRun, ...report, plan: dryRun ? lines : undefined }, `${pk} ⇄ ${repo}\n${formatReport(report, dryRun)}`);
     }
 
     case "tree": {

@@ -69,6 +69,7 @@ kanban sprints list --project WEB
 kanban comment add WEB-12 --body "..."
 kanban changelog WEB [--write CHANGELOG.md]
 kanban git status --project WEB
+kanban gh sync --project WEB --dry-run
 kanban agent-help
 ```
 
@@ -81,6 +82,17 @@ The full help text is available with `kanban help`. The server checks hierarchy,
 3. Read the card with `items get` before editing it.
 4. Move it into progress and leave a short comment as work proceeds.
 5. Ask before deleting work. `items rm` requires `--yes` and deletes the card and its children.
+
+## GitHub issue sync
+
+`kanban gh sync` mirrors a project to GitHub issues through the `gh` CLI (`gh auth login` first). Kanban is the ground truth:
+
+- **Kanban → GitHub:** one issue per open card, titled `[KEY] title`. Each issue gets labels (`type:`, `priority:`, `status:`, `area:`), the sprint as a milestone, acceptance criteria as a checklist, and native sub-issues and blocked-by links. Titles, bodies, labels, milestones, and open/closed state are overwritten from Kanban on every run. Done cards close their issue.
+- **GitHub → Kanban:** open issues without a Kanban key become backlog cards (`bug` if labelled bug), and the issue is stamped with the new key. GitHub comments are copied to the card, and card comments are copied to the issue, each only once. An issue closed on GitHub, for example by a merged PR, moves its card to `in_review` for a person to confirm; it is never reopened.
+- **Repo:** `--repo owner/name`, else the repo saved by `kanban link` (detected from the `origin` remote), else `origin`. Upstream remotes are never used.
+- **Flags:** `--dry-run` prints the plan. `--include-done` also mirrors done cards. `--no-comments` skips comment sync. `--relink` re-applies sub-issue and dependency links. `--board-url` adds a board link to each issue; save it once with `kanban link --project KEY --board-url URL`. Label an issue `kanban-ignore` to keep it out of Kanban.
+
+Each issue body ends with a hidden `<!-- kanban:KEY -->` marker, so no local state is needed and any machine can run the sync.
 
 ## Git hooks
 

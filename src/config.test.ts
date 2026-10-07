@@ -44,3 +44,10 @@ test("saved config is written with owner-only permissions", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("parseGithubRemote reads https and ssh remotes", async () => {
+  const { parseGithubRemote } = await import("./config.js");
+  assert.equal(parseGithubRemote("https://github.com/4cecoder/propertyportal.git"), "4cecoder/propertyportal");
+  assert.equal(parseGithubRemote("git@github.com:seridian-dev/kanban-cli.git\n"), "seridian-dev/kanban-cli");
+  assert.equal(parseGithubRemote("https://gitlab.com/a/b.git"), undefined);
+});
