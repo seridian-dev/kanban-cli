@@ -41,7 +41,6 @@ async function runMain(argv: string[]) {
   const { positionals: pos, flags } = parseArgs(argv);
   const json = flags.json === true;
   const out = (data: unknown, human: string) => console.log(json ? JSON.stringify(data, null, flags.compact === true ? undefined : 2) : human);
-  const allowUpdateNotice = shouldShowUpdateNotice({ stdoutIsTTY: process.stdout.isTTY, json, command: pos });
   if (pos.length === 0 || pos[0] === "help" || flags.help) {
     console.log(FULL_HELP);
     return;
