@@ -15,6 +15,7 @@ import { formatChangelog, withGeneratedChangelog } from "./changelog.js";
 import { runGit } from "./git.js";
 import { extractItemKeys, hooksStatus, installHooks, outgoingCommitMessages, parsePushRefs, readActiveItem, setActiveItem, validateHookItems } from "./hooks.js";
 import { readFileSync, writeFileSync } from "node:fs";
+import { checkForUpdate, shouldShowUpdateNotice, updateInstallCommand } from "./update-check.js";
 import { resolve } from "node:path";
 import { classifyError, compactItems, formatTable, formatTree, parseArgs, parseKey, pickSprint, readAll, splitList, UsageError, type Parsed } from "./lib.js";
 
@@ -33,16 +34,28 @@ function cleanServerError(e: unknown): string {
 }
 
 async function main(argv: string[]) {
+  await runMain(argv);
+}
+
+async function runMain(argv: string[]) {
   const { positionals: pos, flags } = parseArgs(argv);
   const json = flags.json === true;
   const out = (data: unknown, human: string) => console.log(json ? JSON.stringify(data, null, flags.compact === true ? undefined : 2) : human);
-
+  const allowUpdateNotice = shouldShowUpdateNotice({ stdoutIsTTY: process.stdout.isTTY, json, command: pos });
   if (pos.length === 0 || pos[0] === "help" || flags.help) {
     console.log(FULL_HELP);
     return;
   }
   if (pos[0] === "agent-help") {
     console.log(AGENT_HELP);
+    return;
+  }
+
+  if (pos[0] === "update" && pos[1] === "check") {
+    try {
+      const result = await checkForUpdate({ force: true });
+      out(result, result.updateAvailable ? `Update available: ${result.current} → ${result.latest}` : result.latest ? `Up to date (${result.current})` : "Could not check for updates.");
+    } catch { out({ checked: false }, "Could not check for updates."); }
     return;
   }
 
@@ -135,18 +148,25 @@ async function main(argv: string[]) {
   const client = new ConvexHttpClient(url) as unknown as CliConvexClient;
   if (auth?.token) (client as unknown as ConvexHttpClient).setAuth(auth.token);
   const actor = str(flags.as) ?? process.env.KANBAN_USER ?? config.user ?? "cli";
-  const workspaceSlug = () => str(flags.workspace)?.toLowerCase() ?? process.env.KANBAN_WORKSPACE?.toLowerCase() ?? linkedContext(config)?.workspace ?? config.workspace;
-  const workspaceFor = async (slug = workspaceSlug()) => {
+  let accountDefaults: Promise<{ workspaceSlug: string | null; projectKey: string | null } | null> | undefined;
+  const getAccountDefaults = () => accountDefaults ??= client.query(api.preferences.getCliDefaults, {}).then((value: any) => ({ workspaceSlug: value?.workspaceSlug ?? null, projectKey: value?.projectKey ?? null })).catch((error: unknown) => {
+    if (/Could not find public function/i.test(error instanceof Error ? error.message : String(error))) return null;
+    throw error;
+  });
+  const workspaceLocal = () => str(flags.workspace)?.toLowerCase() ?? process.env.KANBAN_WORKSPACE?.toLowerCase() ?? linkedContext(config)?.workspace ?? config.workspace;
+  const workspaceSlug = async () => workspaceLocal() ?? (await getAccountDefaults())?.workspaceSlug?.toLowerCase();
+  const workspaceFor = async (slug?: string) => {
+    slug ??= await workspaceSlug();
     if (!slug) return undefined;
     const workspace = await client.query(api.organizations.getBySlug, { slug });
     if (!workspace) throw new CliError(`Workspace ${slug} not found or unavailable`, 3);
     return workspace;
   };
   const inferredWorkspaceSlugs = new Map<string, Promise<string | undefined>>();
-  const workspaceForProject = (key: string): Promise<string | undefined> => {
+  const workspaceForProject = async (key: string): Promise<string | undefined> => {
     const projectKey = key.toUpperCase();
-    const selected = workspaceSlug();
-    if (selected) return Promise.resolve(selected);
+    const selected = await workspaceSlug();
+    if (selected) return selected;
     const cached = inferredWorkspaceSlugs.get(projectKey);
     if (cached) return cached;
     const result = (async () => {
@@ -167,11 +187,30 @@ async function main(argv: string[]) {
     inferredWorkspaceSlugs.set(projectKey, result);
     return result;
   };
-  const project = () => {
-    const p = str(flags.project) ?? process.env.KANBAN_PROJECT ?? linkedContext(config)?.project ?? config.project;
-    if (!p) throw usage("--project KEY is required. Or link this folder with `kanban link --project KEY`.");
+  const projectLocal = () => str(flags.project)?.toUpperCase() ?? process.env.KANBAN_PROJECT?.toUpperCase() ?? linkedContext(config)?.project ?? config.project;
+  const project = async () => {
+    const p = projectLocal() ?? (await getAccountDefaults())?.projectKey ?? undefined;
+    if (!p) throw usage("--project KEY is required. Or link this folder with `kanban link --project KEY`, or set a default project in Kanban → Settings → CLI defaults.");
     return p.toUpperCase();
   };
+
+  if (group === "defaults") {
+    const mapping = linkedContext(config);
+    const workspaceValue = workspaceLocal();
+    const projectValue = projectLocal();
+    const defaults = workspaceValue && projectValue ? null : await getAccountDefaults();
+    const workspace = workspaceValue ?? defaults?.workspaceSlug?.toLowerCase();
+    const selectedProject = projectValue ?? defaults?.projectKey?.toUpperCase();
+    const source = (local: string | undefined, name: "workspace" | "project") => {
+      if (str(flags[name])) return "flag";
+      if (process.env[name === "workspace" ? "KANBAN_WORKSPACE" : "KANBAN_PROJECT"]) return "env";
+      if (name === "workspace" ? mapping?.workspace : mapping?.project) return "folder link";
+      if (config[name]) return "config";
+      return defaults && (name === "workspace" ? defaults.workspaceSlug : defaults.projectKey) ? "account" : "not set";
+    };
+    const result = { workspace: { value: workspace ?? null, source: source(workspaceValue, "workspace") }, project: { value: selectedProject ?? null, source: source(projectValue, "project") } };
+    return out(result, `Workspace: ${workspace ?? "not set"} (${result.workspace.source})\nProject: ${selectedProject ?? "not set"} (${result.project.source})`);
+  }
 
   const idOf = async (key: string): Promise<Id<"workItems">> => {
     if (!parseKey(key)) throw usage(`"${key}" is not an item key like WEB-12`);
@@ -196,7 +235,7 @@ async function main(argv: string[]) {
       const stage = str(flags.stage);
       if (stage === "pre-commit") {
         const key = await readActiveItem();
-        const selectedProject = project();
+        const selectedProject = await project();
         const items = await validateHookItems([key], selectedProject, ["in_progress", "in_review"], async (itemKey) => {
           const detail = await client.query(api.agentApi.detail, { key: itemKey, workspaceSlug: await workspaceForProject(selectedProject) });
           return detail ? { key: itemKey, status: detail.item.status } : null;
@@ -210,7 +249,7 @@ async function main(argv: string[]) {
         const keysByCommit = messages.map(extractItemKeys);
         if (keysByCommit.some((commitKeys) => commitKeys.length === 0)) throw new CliError("Every outgoing commit must reference a Kanban item key (for example KAN-185).", 2);
         const keys = [...new Set(keysByCommit.flat())];
-        const selectedProject = project();
+        const selectedProject = await project();
         const items = await validateHookItems(keys, selectedProject, ["in_progress", "in_review", "done"], async (key) => {
           const detail = await client.query(api.agentApi.detail, { key, workspaceSlug: await workspaceForProject(selectedProject) });
           return detail ? { key, status: detail.item.status } : null;
@@ -241,7 +280,7 @@ async function main(argv: string[]) {
         return out({ key }, `Created project ${key}`);
       }
       if (sub === "open") {
-        const key = (arg ?? project()).toUpperCase();
+        const key = (arg ?? await project()).toUpperCase();
         const selected = await client.query(api.projects.getByKey, { key, workspaceSlug: await workspaceForProject(key) });
         if (!selected) throw new CliError(`Project ${key} not found`, 3);
         const target = selected.workspaceSlug ? `${selected.workspaceSlug}/p/${key}/board` : `p/${key}/board`;
@@ -254,7 +293,7 @@ async function main(argv: string[]) {
     }
 
     case "changelog": {
-      const key = (sub ?? project()).toUpperCase();
+      const key = (sub ?? await project()).toUpperCase();
       const rows = await client.query(api.changelog.doneItems, { projectKey: key, workspaceSlug: await workspaceForProject(key) });
       if (!rows) throw new CliError(`Project ${key} not found`, 3);
       const md = formatChangelog(key, rows);
@@ -281,7 +320,7 @@ async function main(argv: string[]) {
     }
 
     case "tree": {
-      const key = (sub ?? project()).toUpperCase();
+      const key = (sub ?? await project()).toUpperCase();
       const rows = await client.query(api.agentApi.tree, { projectKey: key, workspaceSlug: await workspaceForProject(key) });
       if (!rows) throw new CliError(`Project ${key} not found`, 3);
       return out(rows, formatTree(rows));
@@ -294,8 +333,8 @@ async function main(argv: string[]) {
           throw usage("--limit must be a whole number from 1 to 100");
         }
         const allRows = await client.query(api.agentApi.search, {
-          projectKey: project(),
-          workspaceSlug: await workspaceForProject(project()),
+          projectKey: await project(),
+          workspaceSlug: await workspaceForProject(await project()),
           q: str(flags.q),
           status: str(flags.status) as never,
           assignee: str(flags.assignee),
@@ -309,7 +348,7 @@ async function main(argv: string[]) {
       }
       if (sub === "get") {
         const key = need(arg, "item key");
-        const d = await client.query(api.agentApi.detail, { key, workspaceSlug: await workspaceForProject(parseKey(key)?.project ?? project()) });
+        const d = await client.query(api.agentApi.detail, { key, workspaceSlug: await workspaceForProject(parseKey(key)?.project ?? await project()) });
         if (!d) throw new CliError(`Item ${key.toUpperCase()} not found`, 3);
         const i = d.item;
         const human = [
@@ -323,7 +362,7 @@ async function main(argv: string[]) {
         return out(d, human);
       }
       if (sub === "create") {
-        const pk = project();
+        const pk = await project();
         const p = await client.query(api.projects.getByKey, { key: pk, workspaceSlug: await workspaceForProject(pk) });
         if (!p) throw new CliError(`Project ${pk} not found`, 3);
         const id = await client.mutation(api.workItems.create, {
@@ -437,7 +476,7 @@ async function main(argv: string[]) {
     }
 
     case "sprints": {
-      const pk = project();
+      const pk = await project();
       const p = await client.query(api.projects.getByKey, { key: pk, workspaceSlug: await workspaceForProject(pk) });
       if (!p) throw new CliError(`Project ${pk} not found`, 3);
       if (sub === "list") {
@@ -484,7 +523,15 @@ async function readStdin(): Promise<string> {
   return readAll(process.stdin, STDIN_TIMEOUT_MS);
 }
 
-main(process.argv.slice(2)).catch((e) => {
+main(process.argv.slice(2)).then(async () => {
+  const argv = process.argv.slice(2);
+  if (shouldShowUpdateNotice({ stdoutIsTTY: process.stdout.isTTY, command: argv })) {
+    try {
+      const result = await checkForUpdate();
+      if (result.updateAvailable) process.stderr.write(`Update available: ${result.current} → ${result.latest}. Run: ${updateInstallCommand()}\n`);
+    } catch { /* Update checks never affect command behavior. */ }
+  }
+}).catch((e) => {
   const json = process.argv.includes("--json");
   let message = e instanceof CliError || e instanceof UsageError ? e.message : cleanServerError(e);
   if (/unauthenticated|not authenticated|invalid auth token|invalid jwt/i.test(message)) {

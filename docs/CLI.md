@@ -36,7 +36,9 @@ The config file is `~/.config/kanban/config.json`, with owner-only permissions. 
 
 Link a Git repo to a project once. From the repo root, run `kanban link --workspace acme --project WEB`. You can link a specific folder with `kanban link --workspace acme --project WEB --path ./packages/api`. Run `kanban context` in a nested folder to check the selected workspace and project. The nearest folder link wins, so a subfolder can point to a different workspace project. Use `kanban links list` to review mappings and `kanban links remove --path ./packages/api` to remove one. `kanban projects open WEB` opens that project in the browser.
 
-Project selection is resolved in this order: `--project`, `KANBAN_PROJECT`, the nearest linked folder, then the saved default project. These are local settings; your repository stays untouched.
+Project selection is resolved in this order: `--project`, `KANBAN_PROJECT`, the nearest linked folder, the saved default project, then the account's CLI default in Kanban settings. Workspace selection follows the same order with `--workspace`, `KANBAN_WORKSPACE`, folder link, saved default, and account default. Account defaults are fetched only when no local value is available. Run `kanban defaults` to see each effective value and its source; set account values in **Kanban → Settings → CLI defaults**.
+
+The CLI checks npm for a newer version at most once every 24 hours and shows an update notice after a command completes. It stores the check in `~/.config/kanban/update-check.json`. The check never blocks or fails a command. Run `kanban update check` to force a check and show the result. Set `KANBAN_NO_UPDATE_CHECK=1` to disable automatic checks; checks are also disabled in CI and for `agent-help`.
 
 Sign out on this computer with `kanban logout`. This removes its saved session; the short-lived session expires automatically.
 

@@ -39,6 +39,8 @@ It explains how to find a card, read its dependencies, start work, leave a progr
 
 Save your name, workspace, and default project with `kanban config set user alex`, `kanban config set workspace acme`, and `kanban config set project WEB`. From a repo, `kanban link --workspace acme --project WEB` remembers both the workspace and project. Run `kanban context` in any folder to check the selected workspace and project, or `kanban projects open WEB` to open it in your browser. These settings stay in `~/.config/kanban/config.json`; the CLI does not modify your repository.
 
+Workspace and project defaults can also come from **Kanban → Settings → CLI defaults** when no flag, environment variable, folder link, or local config supplies a value. Run `kanban defaults` to see the effective values and where they came from. The CLI checks for updates at most once every 24 hours; run `kanban update check` to check now, or set `KANBAN_NO_UPDATE_CHECK=1` to turn automatic checks off.
+
 ## Sign out
 
 ```sh

@@ -12,8 +12,10 @@ UPDATE    kanban comment add WEB-12 --body "Progress: ...; next: ...; blocker: n
 QA        kanban items move WEB-12 --status in_review
 FINISH    kanban items move WEB-12 --status done (only after verifying the work)
 
-Project lookup: --project > KANBAN_PROJECT > nearest linked folder > saved default.
-Workspace lookup: --workspace > KANBAN_WORKSPACE > nearest linked folder > saved default.
+Project lookup: --project > KANBAN_PROJECT > nearest linked folder > saved default > account CLI default.
+Workspace lookup: --workspace > KANBAN_WORKSPACE > nearest linked folder > saved default > account CLI default.
+Use 'kanban defaults' to show effective defaults and their source; set account defaults in Kanban → Settings → CLI defaults.
+The CLI checks npm for updates at most daily; run 'kanban update check' to check now or set KANBAN_NO_UPDATE_CHECK=1 to disable.
 Use 'kanban config' for saved site/user/workspace/project settings and 'kanban links list' for links.
 Writes are validated by the server. Local settings live in ~/.config/kanban/config.json.
 Use --compact --limit N --json to keep large boards out of the context window.
@@ -30,6 +32,8 @@ GET STARTED
   kanban link --workspace acme --project WEB  link this Git repo to a workspace project
   kanban link --project KEY --path ./docs   link a folder to a project
   kanban context                            show which project this folder uses
+  kanban defaults                           show effective workspace and project defaults and their source
+  kanban update check                       check for a newer CLI version now
   kanban projects open WEB                  open the selected workspace project
   kanban links list                         list saved folder links
   kanban hooks install                      install local pre-commit and pre-push checks
