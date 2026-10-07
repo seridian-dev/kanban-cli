@@ -28,8 +28,10 @@ class CliError extends Error {
 const usage = (m: string) => new CliError(m, 2);
 
 function cleanServerError(e: unknown): string {
+  // Server rules throw ConvexError; its data is the exact message (production redacts plain Errors).
+  if (e && typeof e === "object" && "data" in e && typeof (e as { data: unknown }).data === "string") return (e as { data: string }).data;
   const raw = e instanceof Error ? e.message : String(e);
-  const m = /Uncaught Error: ([^\n]+?)(?: at | Called by|$|\n)/.exec(raw);
+  const m = /Uncaught (?:Convex)?Error: ([^\n]+?)(?: at | Called by|$|\n)/.exec(raw);
   return (m?.[1] ?? raw.split("\n")[0]).trim();
 }
 
