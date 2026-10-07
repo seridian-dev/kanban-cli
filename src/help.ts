@@ -77,6 +77,7 @@ WRITE
   kanban gh sync --project WEB [--repo owner/name --dry-run --include-done --no-comments --relink --board-url URL]
         two-way GitHub issue sync via the gh CLI; Kanban is ground truth. --repo defaults to the repo saved by
         kanban link (auto-detected from origin), so linked checkouts just run: kanban gh sync
+        kanban link --project WEB --board-url URL saves the board link used in issue bodies.
   kanban sprints create --project WEB --name S1 [--goal .. --start .. --end ..] · sprints start|complete NAME --project WEB
   kanban config set site https://kanban.seridian.dev · config set user alex · config set workspace acme · config set project WEB
   kanban links remove [--path .]

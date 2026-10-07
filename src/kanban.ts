@@ -89,7 +89,9 @@ async function runMain(argv: string[]) {
     const path = resolve(str(flags.path) ?? gitRoot());
     const workspace = (str(flags.workspace) ?? process.env.KANBAN_WORKSPACE ?? config.workspace)?.toLowerCase();
     const github = str(flags.github) ?? detectGithubRepo(path);
-    config.links = [...(config.links ?? []).filter((link) => resolve(link.path) !== path), { path, project: projectKey, workspace, github }];
+    const previous = (config.links ?? []).find((link) => resolve(link.path) === path);
+    const boardUrl = str(flags["board-url"]) ?? previous?.boardUrl;
+    config.links = [...(config.links ?? []).filter((link) => resolve(link.path) !== path), { path, project: projectKey, workspace, github, ...(boardUrl ? { boardUrl } : {}) }];
     await writeConfig(config);
     return out({ path, project: projectKey, workspace, github }, `Linked ${path} to ${workspace ? `${workspace}/` : ""}${projectKey}.${github ? ` GitHub: ${github} (used by \`kanban gh sync\`).` : ""} Nested folders use this project unless they have a more specific link.`);
   }
@@ -337,7 +339,7 @@ async function runMain(argv: string[]) {
         workspaceSlug,
         repo,
         actor,
-        boardUrl: str(flags["board-url"]),
+        boardUrl: str(flags["board-url"]) ?? linkedContext(config)?.boardUrl,
         dryRun,
         includeDone: flags["include-done"] === true,
         comments: flags["no-comments"] !== true,
