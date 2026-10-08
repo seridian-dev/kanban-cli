@@ -11,7 +11,7 @@ START     kanban items move WEB-12 --status in_progress
 UPDATE    kanban comment add WEB-12 --body "Progress: ...; next: ...; blocker: none"
 QA        kanban items move WEB-12 --status in_review
 FINISH    kanban items move WEB-12 --status done (only after verifying the work)
-GITHUB    kanban gh sync --project WEB --dry-run  → then without --dry-run (issues mirror cards; Kanban wins)
+GITHUB    kanban gh sync --dry-run → kanban gh sync (issues mirror cards; Kanban wins) · kanban gh pr (open PR, card → review)
 
 Project lookup: --project > KANBAN_PROJECT > nearest linked folder > saved default > account CLI default.
 Workspace lookup: --workspace > KANBAN_WORKSPACE > nearest linked folder > saved default > account CLI default.
@@ -78,6 +78,11 @@ WRITE
         two-way GitHub issue sync via the gh CLI; Kanban is ground truth. --repo defaults to the repo saved by
         kanban link (auto-detected from origin), so linked checkouts just run: kanban gh sync
         kanban link --project WEB --board-url URL saves the board link used in issue bodies.
+        PRs that name a card (title, branch, body, or "Closes #n") are listed on its issue; an open PR moves
+        the card to in_review once (--no-prs to skip). Nothing is ever moved to done automatically.
+  kanban gh pr [WEB-12] [--draft --base main --title .. --body ..]   open a PR for this branch: "WEB-12: title",
+        Closes #issue, acceptance criteria; key from the arg, the active item, or the branch name
+  kanban gh issue [WEB-12]                         print the GitHub issue URL for a card
   kanban sprints create --project WEB --name S1 [--goal .. --start .. --end ..] · sprints start|complete NAME --project WEB
   kanban config set site https://kanban.seridian.dev · config set user alex · config set workspace acme · config set project WEB
   kanban links remove [--path .]

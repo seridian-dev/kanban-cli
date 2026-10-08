@@ -57,6 +57,38 @@ export interface Issue {
 }
 
 export const markerFor = (key: string) => `<!-- kanban:${key} -->`;
+export const PR_MARKER_RE = /\(gh-pr:(\d+):(open|merged)\)/g;
+
+export interface PullRequest {
+  number: number;
+  title: string;
+  body: string | null;
+  state: "open" | "closed";
+  draft?: boolean;
+  merged_at?: string | null;
+  html_url: string;
+  head: { ref: string };
+}
+
+const CLOSING_VERB = "(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)";
+
+/**
+ * Card keys a pull request delivers: keys in its title or branch name, and keys or issues after a
+ * closing word in the body ("Closes #28", "Fixes PP-55"). Keys merely mentioned in the body don't count.
+ */
+export function prKeys(pr: Pick<PullRequest, "title" | "body" | "head">, projectKey: string, keyByIssue: Map<number, string>): string[] {
+  const keyRe = new RegExp(`\\b${projectKey}-(\\d+)\\b`, "gi");
+  const keys = [...`${pr.title}\n${pr.head.ref}`.matchAll(keyRe)].map((m) => `${projectKey}-${m[1]}`);
+  const closing = new RegExp(`\\b${CLOSING_VERB}:?\\s+(?:#(\\d+)|${projectKey}-(\\d+))\\b`, "gi");
+  for (const m of (pr.body ?? "").matchAll(closing)) {
+    const key = m[1] ? keyByIssue.get(Number(m[1])) : `${projectKey}-${m[2]}`;
+    if (key) keys.push(key.toUpperCase());
+  }
+  return [...new Set(keys)];
+}
+
+export const prState = (pr: Pick<PullRequest, "state" | "merged_at" | "draft">): "open" | "draft" | "merged" | "closed" =>
+  pr.merged_at ? "merged" : pr.state === "closed" ? "closed" : pr.draft ? "draft" : "open";
 export const parseMarker = (body: string | null | undefined) => MARKER_RE.exec(body ?? "")?.[1];
 const TITLE_KEY_RE = /^\[([A-Z][A-Z0-9]*-\d+)\] /;
 /** Which Kanban card an issue mirrors: the body marker, else a "[KEY] title" prefix from older mirrors. */
@@ -98,6 +130,7 @@ export interface BodyContext {
   issueByKey: Map<string, Issue>;
   children: SyncItem[];
   sprintName?: string;
+  pulls?: PullRequest[];
 }
 
 const ref = (key: string, ctx: BodyContext) => {
@@ -123,6 +156,7 @@ export function renderBody(item: SyncItem, ctx: BodyContext): string {
   if (criteria.length) lines.push("## Acceptance criteria", "", ...criteria.map((c) => `- [ ] ${c}`), "");
   const deps = (item.dependsOn ?? []).map((id) => ctx.keyById.get(id)).filter((d): d is SyncItem => !!d);
   if (deps.length) lines.push("## Depends on", "", ...deps.map((d) => `- [${d.status === "done" ? "x" : " "}] ${ref(d.key, ctx)} ${d.title}`), "");
+  if (ctx.pulls?.length) lines.push("## Pull requests", "", ...ctx.pulls.map((p) => `- [${prState(p) === "merged" ? "x" : " "}] #${p.number} ${p.title} (${prState(p)})`), "");
   if (ctx.children.length) lines.push("## Children", "", ...ctx.children.map((c) => `- [${c.status === "done" ? "x" : " "}] ${ref(c.key, ctx)} ${c.title}`), "");
   lines.push(markerFor(item.key));
   return lines.join("\n");
@@ -188,6 +222,8 @@ export interface SyncOptions {
   includeDone: boolean;
   comments: boolean;
   relink: boolean;
+  /** Read pull requests: link them on issues and cards, and move cards with an open PR to in_review. */
+  prs?: boolean;
   log: (line: string) => void;
 }
 
@@ -201,10 +237,11 @@ export interface SyncReport {
   commentsToKanban: number;
   commentsToGithub: number;
   linked: number;
+  prLinks: string[];
 }
 
 export async function syncGithub(client: CliConvexClient, opts: SyncOptions, gh: Gh = ghCli): Promise<SyncReport> {
-  const report: SyncReport = { created: [], updated: [], closed: [], reopened: [], importedFromGithub: [], movedToReview: [], commentsToKanban: 0, commentsToGithub: 0, linked: 0 };
+  const report: SyncReport = { created: [], updated: [], closed: [], reopened: [], importedFromGithub: [], movedToReview: [], commentsToKanban: 0, commentsToGithub: 0, linked: 0, prLinks: [] };
   const R = opts.repo;
   if (!/^[\w.-]+\/[\w.-]+$/.test(R)) throw new Error("--repo must look like owner/name");
   await checkGh(gh);
@@ -261,6 +298,38 @@ export async function syncGithub(client: CliConvexClient, opts: SyncOptions, gh:
     report.movedToReview.push(key);
   }
 
+  // GitHub → Kanban: pull requests that name a card. An open PR moves the card to review; nothing moves to done.
+  const pullsByKey = new Map<string, PullRequest[]>();
+  if (opts.prs !== false) {
+    const keyByIssue = new Map([...issueByKey].map(([k, i]) => [i.number, k]));
+    const pulls: PullRequest[] = await gh(["api", `repos/${R}/pulls?state=all&sort=updated&direction=desc&per_page=100`]);
+    for (const pr of Array.isArray(pulls) ? pulls : []) {
+      for (const key of prKeys(pr, opts.projectKey, keyByIssue)) {
+        if (!itemByKey.has(key)) continue;
+        pullsByKey.set(key, [...(pullsByKey.get(key) ?? []), pr]);
+      }
+    }
+    for (const [key, prs] of pullsByKey) {
+      const item = itemByKey.get(key)!;
+      const kComments: { body: string }[] = await client.query(api.comments.listForItem, { workItemId: item._id });
+      const seen = new Set(kComments.flatMap((c) => [...c.body.matchAll(PR_MARKER_RE)].map((m) => `${m[1]}:${m[2]}`)));
+      for (const pr of prs) {
+        const state = prState(pr);
+        const event = state === "merged" ? "merged" : state === "open" ? "open" : undefined;
+        if (!event || seen.has(`${pr.number}:${event}`)) continue;
+        opts.log(`pr ${key} ← #${pr.number} ${event}`);
+        report.prLinks.push(`${key} ← #${pr.number} ${event}`);
+        if (opts.dryRun) continue;
+        await client.mutation(api.comments.add, { workItemId: item._id, author: opts.actor, body: `PR #${pr.number} ${event === "merged" ? "merged" : "opened"}: ${pr.title} ${pr.html_url} (gh-pr:${pr.number}:${event})` });
+        if (["backlog", "todo", "in_progress"].includes(item.status)) {
+          await client.mutation(api.workItems.move, { id: item._id, actor: opts.actor, status: "in_review" });
+          item.status = "in_review";
+          report.movedToReview.push(key);
+        }
+      }
+    }
+  }
+
   // Labels and milestones Kanban needs.
   const scope = items.filter((x) => x.status !== "done" || opts.includeDone || issueByKey.has(x.key));
   const wantLabels = new Set(scope.flatMap(labelsFor));
@@ -286,7 +355,7 @@ export async function syncGithub(client: CliConvexClient, opts: SyncOptions, gh:
   const depth = (x: SyncItem): number => (x.parentId && keyById.has(x.parentId) ? 1 + depth(keyById.get(x.parentId)!) : 0);
   const ordered = [...scope].sort((a, b) => depth(a) - depth(b) || a.number - b.number);
   const sprintName = (x: SyncItem) => sprints.find((s) => s._id === x.sprintId)?.name;
-  const ctxFor = (x: SyncItem): BodyContext => ({ boardUrl: opts.boardUrl, keyById, issueByKey, children: childrenOf(x._id), sprintName: sprintName(x) });
+  const ctxFor = (x: SyncItem): BodyContext => ({ boardUrl: opts.boardUrl, keyById, issueByKey, children: childrenOf(x._id), sprintName: sprintName(x), pulls: (pullsByKey.get(x.key) ?? []).sort((a, b) => a.number - b.number) });
 
   // Kanban → GitHub: create missing issues (parents first so bodies can link them).
   const fresh = new Set<string>();
@@ -393,5 +462,24 @@ export function formatReport(r: SyncReport, dryRun: boolean): string {
     line("Moved to in_review (closed on GitHub)", r.movedToReview),
     r.commentsToKanban || r.commentsToGithub ? `Comments: ${r.commentsToKanban} to Kanban, ${r.commentsToGithub} to GitHub` : "",
     r.linked ? `Sub-issue/dependency links: ${r.linked}` : "",
+    line("Pull requests", r.prLinks),
   ].filter(Boolean).join("\n") || "Already in sync.";
 }
+
+/** The issue that mirrors a card, if any. */
+export async function findIssue(repo: string, key: string, gh: Gh = ghCli): Promise<Issue | undefined> {
+  const issues: Issue[] = (await paginate(gh, `repos/${repo}/issues?state=all&per_page=100`)).filter((i: Issue) => !i.pull_request);
+  return issues.find((i) => issueKey(i) === key);
+}
+
+/** Title and body for a pull request that delivers a card. */
+export function prDraft(item: Pick<SyncItem, "key" | "title" | "description">, issue: Pick<Issue, "number"> | undefined, extra?: string): { title: string; body: string } {
+  const { criteria } = splitAcceptance(item.description);
+  const lines = [issue ? `Closes #${issue.number} (${item.key}).` : `${item.key}.`, ""];
+  if (extra) lines.push(extra.trim(), "");
+  if (criteria.length) lines.push("## Acceptance criteria", "", ...criteria.map((c) => `- [ ] ${c}`), "");
+  lines.push("## Test plan", "", "- [ ] ", "");
+  return { title: `${item.key}: ${item.title}`, body: lines.join("\n") };
+}
+
+export { paginate as ghPaginate };
