@@ -57,5 +57,6 @@ test("automatic notice is suppressed for JSON, opt-out, CI, and agent-help", () 
   assert.equal(shouldShowUpdateNotice({ stdoutIsTTY: true, command: ["items", "list"], env: { CI: "true" } }), false);
   assert.equal(shouldShowUpdateNotice({ stdoutIsTTY: true, command: ["agent-help"] }), false);
   assert.equal(shouldShowUpdateNotice({ stdoutIsTTY: false, command: ["items", "list"] }), false);
-  assert.equal(shouldShowUpdateNotice({ stdoutIsTTY: true, command: ["items", "list"] }), true);
+  // Pass an explicit env so the positive case does not depend on the runner's CI variable.
+  assert.equal(shouldShowUpdateNotice({ stdoutIsTTY: true, command: ["items", "list"], env: {} }), true);
 });
