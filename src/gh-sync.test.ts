@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { desiredState, closedOnGithub, issueKey, labelsFor, markerFor, renderBody, splitAcceptance, syncGithub, type Gh, type Issue, type SyncItem } from "./gh-sync.js";
+import { desiredState, closedOnGithub, issueKey, prDraft, prKeys, prState, labelsFor, markerFor, renderBody, splitAcceptance, syncGithub, type Gh, type Issue, type SyncItem } from "./gh-sync.js";
 
 const item = (over: Partial<SyncItem> = {}): SyncItem => ({ _id: "i1", key: "PP-5", type: "story", status: "todo", title: "Do it", number: 5, priority: "high", labels: ["ux"], ...over });
 
@@ -35,7 +35,29 @@ test("renderBody ends with the marker and links known issues", () => {
   assert.ok(body.endsWith(markerFor("PP-5")));
 });
 
-function fakes(issues: Issue[], items: SyncItem[]) {
+test("prKeys finds keys in title, branch, body, and Closes #n", () => {
+  const byIssue = new Map([[28, "PP-55"]]);
+  assert.deepEqual(prKeys({ title: "PP-147: page staff list", head: { ref: "fix/pp-147-staff" }, body: "Closes #28" }, "PP", byIssue), ["PP-147", "PP-55"]);
+  assert.deepEqual(prKeys({ title: "chore", head: { ref: "main" }, body: "mentions APP-1 and #28 only" }, "PP", byIssue), []);
+  assert.deepEqual(prKeys({ title: "Docs", head: { ref: "docs/handoff" }, body: "Findings map to PP-99…PP-113 and PP-120." }, "PP", byIssue), []);
+  assert.deepEqual(prKeys({ title: "Docs", head: { ref: "docs" }, body: "Fixes PP-7. Resolves: #28" }, "PP", byIssue), ["PP-7", "PP-55"]);
+});
+
+test("prState distinguishes merged, closed, draft, and open", () => {
+  assert.equal(prState({ state: "closed", merged_at: "2026-10-07" }), "merged");
+  assert.equal(prState({ state: "closed", merged_at: null }), "closed");
+  assert.equal(prState({ state: "open", draft: true }), "draft");
+  assert.equal(prState({ state: "open" }), "open");
+});
+
+test("prDraft titles the PR after the card and closes its issue", () => {
+  const d = prDraft({ key: "PP-55", title: "Keep history", description: "Why. AC: kept; shown." }, { number: 28 });
+  assert.equal(d.title, "PP-55: Keep history");
+  assert.match(d.body, /^Closes #28 \(PP-55\)\./);
+  assert.match(d.body, /- \[ \] kept\n- \[ \] shown/);
+});
+
+function fakes(issues: Issue[], items: SyncItem[], pulls: unknown[] = []) {
   const calls: string[] = [];
   let next = 100;
   const gh: Gh = async (args, input: any) => {
@@ -45,6 +67,7 @@ function fakes(issues: Issue[], items: SyncItem[]) {
     calls.push(`${method} ${path}`);
     if (path === "repos/me/fork") return { has_issues: true };
     if (path.startsWith("repos/me/fork/issues?")) return [issues];
+    if (path.startsWith("repos/me/fork/pulls?")) return pulls;
     if (path.includes("/labels?") || path.includes("/milestones?")) return [[]];
     if (method === "POST" && path === "repos/me/fork/issues") { const n = next++; return { number: n, id: n * 10, title: input.title, body: input.body, state: "open", labels: [], milestone: null, comments: 0, html_url: "" }; }
     if (path.includes("/comments")) return [[]];
@@ -88,4 +111,15 @@ test("dry run changes nothing", async () => {
   await syncGithub(client, { ...opts, dryRun: true }, gh);
   assert.ok(calls.every((c) => c.startsWith("GET")));
   assert.equal(mutations.length, 0);
+});
+
+test("an open PR naming a card moves it to review once and lists it on the issue", async () => {
+  const pr = { number: 9, title: "PP-5: do it", body: "", state: "open", html_url: "https://x/pull/9", head: { ref: "pp-5-do-it" } };
+  const issue: Issue = { number: 3, id: 30, title: "[PP-5] Do it", body: markerFor("PP-5"), state: "open", labels: [], milestone: null, comments: 0, html_url: "u" };
+  const { gh, client, mutations } = fakes([issue], [item({ status: "in_progress" })], [pr]);
+  const r = await syncGithub(client, { ...opts, comments: false }, gh);
+  assert.deepEqual(r.prLinks, ["PP-5 ← #9 open"]);
+  assert.deepEqual(r.movedToReview, ["PP-5"]);
+  assert.ok(mutations.some((m) => m.includes("gh-pr:9:open")));
+  assert.ok(mutations.some((m) => m.includes('"status":"in_review"')));
 });

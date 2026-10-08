@@ -92,6 +92,10 @@ The full help text is available with `kanban help`. The server checks hierarchy,
 - **Repo:** `--repo owner/name`, else the repo saved by `kanban link` (detected from the `origin` remote), else `origin`. Upstream remotes are never used.
 - **Flags:** `--dry-run` prints the plan. `--include-done` also mirrors done cards. `--no-comments` skips comment sync. `--relink` re-applies sub-issue and dependency links. `--board-url` adds a board link to each issue; save it once with `kanban link --project KEY --board-url URL`. Label an issue `kanban-ignore` to keep it out of Kanban.
 
+- **Pull requests:** a PR that delivers a card links to it in one of three ways: the key in its title or branch name (`PP-55: …`, `fix/pp-55-…`), or a closing phrase in its body (`Closes #28`, `Fixes PP-55`). A key only mentioned in the body doesn't count. The card's issue lists its PRs. When a PR opens, the card gets one comment and moves to `in_review` if it was earlier in the flow; a merge adds a comment. Nothing is ever moved to `done`. Skip this with `--no-prs`.
+- **`kanban gh pr [KEY]`** opens a PR for the current branch titled `KEY: card title`, with `Closes #issue` and the card's acceptance criteria. It takes the key from the argument, the active item (`kanban hooks set-item`), or the branch name. It then comments on the card and moves it to `in_review` (unless `--draft`). Flags: `--base`, `--title`, `--body`.
+- **`kanban gh issue [KEY]`** prints the card's GitHub issue URL.
+
 Each issue body ends with a hidden `<!-- kanban:KEY -->` marker, so no local state is needed and any machine can run the sync.
 
 ## Git hooks

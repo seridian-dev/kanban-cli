@@ -13,7 +13,8 @@ import { browserLogin, clearToken, openBrowser, readAuth } from "./auth.js";
 import { detectGithubRepo, gitRoot, linkedContext, readConfig, writeConfig } from "./config.js";
 import { formatChangelog, withGeneratedChangelog } from "./changelog.js";
 import { runGit } from "./git.js";
-import { formatReport, syncGithub } from "./gh-sync.js";
+import { findIssue, formatReport, prDraft, syncGithub } from "./gh-sync.js";
+import { execFileSync } from "node:child_process";
 import { extractItemKeys, hooksStatus, installHooks, outgoingCommitMessages, parsePushRefs, readActiveItem, setActiveItem, validateHookItems } from "./hooks.js";
 import { readFileSync, writeFileSync } from "node:fs";
 import { checkForUpdate, shouldShowUpdateNotice, updateInstallCommand } from "./update-check.js";
@@ -326,11 +327,47 @@ async function runMain(argv: string[]) {
     }
 
     case "gh": {
-      if (sub !== "sync") throw usage("Unknown gh command. Supported: sync");
-      const pk = await project();
+      if (sub !== "sync" && sub !== "pr" && sub !== "issue") throw usage("Unknown gh command. Supported: sync, pr, issue");
       // --repo, else the repo saved by `kanban link`, else this checkout's origin (your fork, never upstream).
       const repo = str(flags.repo) ?? linkedContext(config)?.github ?? detectGithubRepo();
       if (!repo) throw usage("--repo owner/name is required (no GitHub origin remote found)");
+      if (sub === "issue" || sub === "pr") {
+        let key: string | undefined = arg?.toUpperCase();
+        if (!key) key = await readActiveItem().catch(() => undefined);
+        if (!key) {
+          try {
+            const branch = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { encoding: "utf8" }).trim();
+            key = /([A-Za-z][A-Za-z0-9]{1,4}-\d+)/.exec(branch)?.[1]?.toUpperCase();
+          } catch { /* not a git checkout */ }
+        }
+        if (!key || !parseKey(key)) throw usage(`Pass an item key (kanban gh ${sub} WEB-12), set one with kanban hooks set-item, or name the branch after the card.`);
+        const d = await client.query(api.agentApi.detail, { key, workspaceSlug: await workspaceForProject(parseKey(key)!.project) });
+        if (!d) throw new CliError(`Item ${key} not found`, 3);
+        const issue = await findIssue(repo, key);
+        if (sub === "issue") {
+          if (!issue) throw new CliError(`No GitHub issue mirrors ${key} in ${repo} yet. Run kanban gh sync.`, 3);
+          return out({ key, repo, number: issue.number, url: issue.html_url }, issue.html_url);
+        }
+        const draft = prDraft(d.item, issue, str(flags.body));
+        const args = ["pr", "create", "--repo", repo, "--title", str(flags.title) ?? draft.title, "--body", draft.body];
+        if (str(flags.base)) args.push("--base", str(flags.base)!);
+        if (flags.draft === true) args.push("--draft");
+        let url: string;
+        try {
+          url = execFileSync("gh", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim().split("\n").pop()!;
+        } catch (e) {
+          const err = e as { stderr?: string };
+          throw new CliError(`gh pr create failed: ${(err.stderr ?? String(e)).trim()}`);
+        }
+        const number = Number(/\/pull\/(\d+)/.exec(url)?.[1]);
+        const event = flags.draft === true ? undefined : "open";
+        await client.mutation(api.comments.add, { workItemId: d.item._id, author: actor, body: `PR #${number} opened: ${draft.title} ${url}${event ? ` (gh-pr:${number}:${event})` : ""}` });
+        if (event && ["backlog", "todo", "in_progress"].includes(d.item.status)) {
+          await client.mutation(api.workItems.move, { id: d.item._id, actor, status: "in_review" });
+        }
+        return out({ key, repo, url, number, issue: issue?.number }, `${url}${event ? `\n${key} → in_review` : ""}`);
+      }
+      const pk = await project();
       const workspaceSlug = await workspaceForProject(pk);
       const dryRun = flags["dry-run"] === true;
       const lines: string[] = [];
@@ -344,6 +381,7 @@ async function runMain(argv: string[]) {
         includeDone: flags["include-done"] === true,
         comments: flags["no-comments"] !== true,
         relink: flags.relink === true,
+        prs: flags["no-prs"] !== true,
         log: (line) => { lines.push(line); if (!json) console.error(line); },
       });
       return out({ repo, project: pk, dryRun, ...report, plan: dryRun ? lines : undefined }, `${pk} ⇄ ${repo}\n${formatReport(report, dryRun)}`);

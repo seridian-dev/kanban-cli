@@ -9,7 +9,7 @@ export interface Parsed {
 export class UsageError extends Error {}
 
 /** Flags that take no value. Every other flag requires one. */
-export const BOOLEAN_FLAGS: ReadonlySet<string> = new Set(["json", "yes", "help", "compact", "dry-run", "include-done", "no-comments", "relink"]);
+export const BOOLEAN_FLAGS: ReadonlySet<string> = new Set(["json", "yes", "help", "compact", "dry-run", "include-done", "no-comments", "relink", "no-prs", "draft"]);
 
 /**
  * Strict argument parser. A value flag must be given a value: `--k v`, `--k=v`
