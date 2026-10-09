@@ -23,6 +23,7 @@ import { checkForUpdate, shouldShowUpdateNotice, updateInstallCommand } from "./
 import { resolve } from "node:path";
 import { classifyError, compactItems, describeDryRun, dryRunPayload, flagFields, formatTable, formatTree, parseArgs, parseKey, pickSprint, readAll, splitList, UsageError, type Parsed, type WouldChange } from "./lib.js";
 import { findCommand, schemaDocument } from "./schema.js";
+import { readRetriesFromEnv, wrapClient } from "./retry.js";
 
 class CliError extends Error {
   constructor(message: string, readonly code: 1 | 2 | 3 = 1) {
@@ -47,6 +48,8 @@ const CREATE_FLAGS = ["type", "title", "description", "parent", "status", "prior
 /** Test seam: `deps.client` replaces the Convex client, so no server is contacted. */
 export interface CliDeps {
   client?: CliConvexClient;
+  /** Test seam: replaces the retry backoff wait so tests run without delays. */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 export async function main(argv: string[], deps: CliDeps = {}) {
@@ -185,7 +188,9 @@ async function runMain(argv: string[], deps: CliDeps) {
     return;
   }
 
-  const client = deps.client ?? await createClient(localSite, auth?.token);
+  // Reads retry on transient failures (KANBAN_RETRIES, default 2); writes are attempted once.
+  const retries = readRetriesFromEnv(process.env);
+  const client = wrapClient(deps.client ?? await createClient(localSite, auth?.token), { retries, sleep: deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms))), random: Math.random });
   const actor = str(flags.as) ?? process.env.KANBAN_USER ?? config.user ?? "cli";
   // --dry-run: validation and key resolution run as usual; the write is reported instead of sent.
   const dryRun = flags["dry-run"] === true;
