@@ -66,12 +66,16 @@ kanban items update WEB-12 --status in_review
 kanban items move WEB-12 --status in_progress
 kanban items breakdown WEB-12 --text "Validate API @sam\nAdd review screen @alex"
 kanban sprints list --project WEB
+kanban next --project WEB [--assignee NAME] --json
+kanban plan --project WEB --json
 kanban comment add WEB-12 --body "..."
 kanban changelog WEB [--write CHANGELOG.md]
 kanban git status --project WEB
 kanban gh sync --project WEB --dry-run
 kanban agent-help
 ```
+
+`kanban next` prints the one card to pick up next. It only considers non-epic cards in the active sprint (or any sprint when none is active) that are `todo` (or `backlog` when no todo exists), whose dependencies are all done, and that are unassigned or assigned to `--assignee` (default: the CLI actor). Ties go to priority (urgent, high, medium, low, none), then sprint state, rank, and number. When nothing qualifies it says why, for example that cards are blocked by open dependencies. `kanban plan` summarizes the active sprint (or the next planned one): ready, blocked with their blocking keys, in progress, in review, done, and points. Both commands are read-only.
 
 The full help text is available with `kanban help`. The server checks hierarchy, dependencies, project membership, and other write rules. Exit codes are `0` success, `1` server/runtime error, `2` invalid command, and `3` not found.
 

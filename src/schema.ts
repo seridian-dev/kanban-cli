@@ -84,6 +84,11 @@ const SPECS: CommandSpec[] = [
     command: "hooks check", summary: "Run a hook stage check (called by installed hooks).", args: [],
     flags: [str("stage", "Hook stage to check.", true, ["pre-commit", "pre-push"]), projectFlag], json: true, destructive: false,
   },
+  {
+    command: "next", summary: "Next card to work on: ready, highest priority, active sprint first.", args: [],
+    flags: [projectFlag, str("assignee", "Assignee handle. Defaults to the signed-in user.")], json: true, destructive: false,
+  },
+  { command: "plan", summary: "Active sprint at a glance: ready, blocked, in progress, review, done, points.", args: [], flags: [projectFlag], json: true, destructive: false },
   { command: "agent-help", summary: "Print the short coding-agent workflow.", args: [], flags: [], json: false, destructive: false },
   { command: "help", summary: "Print the full human-readable command reference.", args: [], flags: [], json: false, destructive: false },
   {

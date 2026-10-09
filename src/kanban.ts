@@ -14,6 +14,7 @@ import { detectGithubRepo, gitRoot, linkedContext, readConfig, writeConfig } fro
 import { formatChangelog, withGeneratedChangelog } from "./changelog.js";
 import { runGit } from "./git.js";
 import { findIssue, formatReport, prDraft, syncGithub } from "./gh-sync.js";
+import { formatNext, formatPlan, pickNext, planSprint } from "./planning.js";
 import { execFileSync } from "node:child_process";
 import { extractItemKeys, hooksStatus, installHooks, outgoingCommitMessages, parsePushRefs, readActiveItem, setActiveItem, validateHookItems } from "./hooks.js";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -253,6 +254,25 @@ async function runMain(argv: string[]) {
     return hit._id as Id<"sprints">;
   };
   const projectOfKey = (key: string) => parseKey(key)!.project;
+
+  if (pos[0] === "next" || pos[0] === "plan") {
+    const pk = await project();
+    const workspaceSlug = await workspaceForProject(pk);
+    const p = await client.query(api.projects.getByKey, { key: pk, workspaceSlug });
+    if (!p) throw new CliError(`Project ${pk} not found`, 3);
+    const items = await client.query(api.workItems.listByProject, { projectId: p._id });
+    const sprints = await client.query(api.sprints.listByProject, { projectId: p._id });
+    if (pos[0] === "next") {
+      const pick = pickNext(items, sprints, str(flags.assignee) ?? actor);
+      const item = pick.item;
+      const data = item
+        ? { key: item.key, title: item.title, type: item.type, status: item.status, priority: item.priority ?? "none", assignee: item.assignee ?? null, points: item.points ?? null, reason: pick.reason, command: `kanban items move ${item.key} --status in_progress` }
+        : { key: null, reason: pick.reason };
+      return out(data, item ? formatNext(pick) : `Nothing to pick up in ${pk}. ${pick.reason}`);
+    }
+    const report = planSprint(items, sprints);
+    return out({ project: pk, ...report }, formatPlan(report, pk));
+  }
 
   switch (group) {
     case "hooks": {
