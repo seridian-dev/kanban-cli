@@ -82,6 +82,23 @@ The full help text is available with `kanban help`. The server checks hierarchy,
 3. Read the card with `items get` before editing it.
 4. Move it into progress and leave a short comment as work proceeds.
 5. Ask before deleting work. `items rm` requires `--yes` and deletes the card and its children.
+6. Dry-run before any destructive or bulk write (see below).
+
+## Dry runs
+
+Every board write command accepts `--dry-run`: `items create|update|move|rm|breakdown|distribute|bulk`, `comment add`, `sprints create|start|complete`, `projects create`, `gh pr`, and `git connect|rotate-secret`. A dry run resolves keys and checks flags exactly as the real run does, so the same usage errors and not-found errors appear. It then prints what would change and exits `0` without sending any write.
+
+```sh
+kanban items rm WEB-12 --yes --dry-run          # lists WEB-12 and every child key
+kanban items bulk --ids WEB-1,WEB-2 --status done --dry-run
+kanban items update WEB-5 --status in_review --dry-run --json
+```
+
+With `--json` the output is `{ "dryRun": true, "wouldChange": [{ "action": "items.update", "keys": ["WEB-5"], "fields": { "status": "in_review" } }] }`. Each entry has an `action`, the item `keys` it touches (for `items rm`, the whole subtree), and the `fields` as typed. `items rm --dry-run` without `--yes` is refused the same way the real run is, so preview a delete with `--yes --dry-run`.
+
+Limits: `breakdown` reports the text it would parse, not the child keys (the server parses it). `distribute` reports the people, not the chosen children. `gh pr` reports the PR it would open. `gh sync --dry-run` keeps its own plan output. Local commands (`link`, `config set`, `hooks install`, `links remove`) change only local files and have no dry run.
+
+Idempotency keys are not supported yet. The server API the CLI calls takes no idempotency argument (`src/api.d.ts` has none), so the CLI does not send one. A retried write can create a duplicate until the server supports keys.
 
 ## GitHub issue sync
 

@@ -12,6 +12,8 @@ UPDATE    kanban comment add WEB-12 --body "Progress: ...; next: ...; blocker: n
 QA        kanban items move WEB-12 --status in_review
 FINISH    kanban items move WEB-12 --status done (only after verifying the work)
 GITHUB    kanban gh sync --dry-run → kanban gh sync (issues mirror cards; Kanban wins) · kanban gh pr (open PR, card → review)
+DRY RUN   Agents: add --dry-run to any write (items create/update/move/rm/breakdown/distribute/bulk, comment add, sprints, projects create, gh pr, git connect/rotate-secret)
+          before running it, especially deletes: kanban items rm WEB-12 --yes --dry-run. Read wouldChange, then run the real command.
 
 Project lookup: --project > KANBAN_PROJECT > nearest linked folder > saved default > account CLI default.
 Workspace lookup: --workspace > KANBAN_WORKSPACE > nearest linked folder > saved default > account CLI default.
@@ -59,6 +61,9 @@ READ
   kanban projects list · sprints list --project WEB · comment list WEB-12
 
 WRITE
+  Board, GitHub and git write commands take --dry-run: it validates and resolves keys exactly as the real run does,
+  prints what would change (JSON: { dryRun: true, wouldChange: [...] }), exits 0, and sends no write.
+  Preview a delete with: kanban items rm WEB-12 --yes --dry-run (lists the whole subtree).
   kanban projects create --key WEB --name "Name" [--description ..]
   kanban items create --project WEB --type story --title "..." [--parent WEB-1 --status --priority --assignee --points N --start YYYY-MM-DD --due YYYY-MM-DD --labels a,b --sprint NAME --description ..]
   kanban items update WEB-12 [--title --description --type --status --priority --assignee --points --start --due --labels --parent WEB-1 --depends-on WEB-3,WEB-4 --sprint NAME]

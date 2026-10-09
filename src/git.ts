@@ -1,7 +1,12 @@
 import { api } from "./api.js";
 import type { CliConvexClient } from "./client.js";
-import { parseKey } from "./lib.js";
+import { describeDryRun, dryRunPayload, parseKey, type WouldChange } from "./lib.js";
 import { gitBranchName } from "./git-utils.js";
+
+/** A dry run for a git write: nothing is sent, the planned change is reported. */
+function dryRun(wouldChange: WouldChange[]) {
+  return { data: dryRunPayload(wouldChange), human: describeDryRun(wouldChange) };
+}
 
 export async function runGit(client: CliConvexClient, command: string | undefined, arg: string | undefined, flags: Record<string, string | true>, actor: string) {
   const projectKey = typeof flags.project === "string" ? flags.project.toUpperCase() : process.env.KANBAN_PROJECT?.toUpperCase();
@@ -20,6 +25,8 @@ export async function runGit(client: CliConvexClient, command: string | undefine
     const provider = flags.provider, repo = flags.repo;
     if (provider !== "github" && provider !== "gitlab") throw new Error("--provider github|gitlab is required");
     if (typeof repo !== "string" || !repo) throw new Error("--repo is required");
+    const host = typeof flags.host === "string" ? flags.host : undefined;
+    if (flags["dry-run"] === true) return dryRun([{ action: "git.connect", project: projectKey, keys: [], fields: { provider, repo, host } }]);
     const result = await client.mutation(api.integrations.connections.connect, { projectId: project._id, provider, repo, host: typeof flags.host === "string" ? flags.host : undefined, actor });
     const url = (process.env.KANBAN_WEBHOOK_URL ?? "https://<deployment>.convex.site") + "/webhooks/" + provider;
     return { data: { ...result, webhookUrl: url }, human: "Webhook URL: " + url + "\nSecret (shown once): " + result.secret };
@@ -45,6 +52,7 @@ export async function runGit(client: CliConvexClient, command: string | undefine
   if (command === "rotate-secret") {
     const id = flags.connection;
     if (typeof id !== "string") throw new Error("--connection ID is required");
+    if (flags["dry-run"] === true) return dryRun([{ action: "git.rotate-secret", project: projectKey, keys: [], fields: { connection: id } }]);
     const result = await client.mutation(api.integrations.connections.rotateSecret, { connectionId: id as never });
     return { data: result, human: "Secret (shown once): " + result.secret };
   }
