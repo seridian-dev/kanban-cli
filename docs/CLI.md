@@ -75,6 +75,19 @@ kanban agent-help
 
 The full help text is available with `kanban help`. The server checks hierarchy, dependencies, project membership, and other write rules. Exit codes are `0` success, `1` server/runtime error, `2` invalid command, and `3` not found.
 
+## Machine-readable schema
+
+`kanban schema` prints JSON describing every command: its arguments, flags with types, required flags, allowed values, whether `--json` is supported, and whether it deletes or invalidates data. It always prints JSON, runs offline, and does not read your saved login or config. Agents should use it instead of parsing `kanban help`.
+
+```sh
+kanban schema | head -c 400          # { "version": "...", "commands": [...] }
+kanban schema items create           # one command
+```
+
+Each command entry has `command`, `summary`, `args`, `flags`, `json`, and `destructive`. Flag types are `string`, `boolean`, `number`, and `list` (comma-separated). `values` lists the accepted values where the CLI enforces them, such as statuses, types, and priorities. The schema is checked by tests against the help text and the parser's boolean flags, so a command added to the help text without a schema entry fails `npm test`. An unknown command name exits `3` and prints a JSON error to stderr.
+
+Global options `--workspace` and `--url` are not listed per command; they are set with `KANBAN_WORKSPACE`, `KANBAN_URL`, or `kanban config set`.
+
 ## Agent safety
 
 1. Run `kanban agent-help` for the short workflow.
