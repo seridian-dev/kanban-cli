@@ -40,6 +40,10 @@ Project selection is resolved in this order: `--project`, `KANBAN_PROJECT`, the 
 
 The CLI checks npm for a newer version at most once every 24 hours and shows an update notice after a command completes. It stores the check in `~/.config/kanban/update-check.json`. The check never blocks or fails a command. Run `kanban update check` to force a check and show the result. Set `KANBAN_NO_UPDATE_CHECK=1` to disable automatic checks; checks are also disabled in CI and for `agent-help`.
 
+Reads retry on transient server failures: network errors, HTTP 5xx, and the generic `Server Error` message. A read gets up to 3 attempts in total, with waits of about 0.5 s and 1.5 s between them. Rule errors (a server message such as a rejected move) and not-found results are never retried. Set `KANBAN_RETRIES` to change the number of retries after the first attempt (an integer from 0 to 10, default 2); `KANBAN_RETRIES=0` turns read retries off.
+
+Writes are never retried automatically, because the server has no idempotency keys yet, so a retried create could duplicate work. If a write fails transiently, the CLI says the write may or may not have been applied and names the read command to check first, for example `kanban comment list KEY` after `comment add`. Run that check, and only retry the write if it did not happen.
+
 Sign out on this computer with `kanban logout`. This removes its saved session; the short-lived session expires automatically.
 
 ## Everyday work
