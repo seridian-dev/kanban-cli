@@ -46,6 +46,7 @@ const keyArg: ArgSpec = { name: "key", required: true, description: "Item key su
 
 const HELP_FLAG = bool("help", "Print the full human-readable help and exit.");
 const JSON_FLAG = bool("json", "Print machine-readable JSON.");
+const DRY_RUN_FLAG = bool("dry-run", "Print the planned changes without sending them.");
 
 const SPECS: CommandSpec[] = [
   { command: "login", summary: "Sign in through the browser and approve this device.", args: [], flags: [], json: false, destructive: false },
@@ -228,10 +229,17 @@ const SPECS: CommandSpec[] = [
   { command: "gh issue", summary: "Print the GitHub issue URL for an item.", args: [{ name: "key", required: false, description: "Item key. Defaults to the active item or the branch name." }], flags: [str("repo", "GitHub repository as owner/name.")], json: true, destructive: false },
 ];
 
+/** Commands that change data on the board, GitHub, or git. Each accepts --dry-run (gh sync declares its own). */
+const WRITE_COMMANDS: ReadonlySet<string> = new Set([
+  "projects create", "items create", "items update", "items move", "items rm", "items breakdown", "items distribute", "items bulk",
+  "comment add", "sprints create", "sprints start", "sprints complete", "git connect", "git rotate-secret", "gh pr",
+]);
+
 /** Flags every command accepts. Added to each entry so the schema lists them explicitly. */
 function withCommonFlags(spec: CommandSpec): CommandSpec {
   const flags = [...spec.flags];
   if (spec.json && !flags.some((f) => f.name === "json")) flags.push(JSON_FLAG);
+  if (WRITE_COMMANDS.has(spec.command) && !flags.some((f) => f.name === "dry-run")) flags.push(DRY_RUN_FLAG);
   if (!flags.some((f) => f.name === "help")) flags.push(HELP_FLAG);
   return { ...spec, flags };
 }

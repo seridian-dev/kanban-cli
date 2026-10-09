@@ -159,3 +159,31 @@ export function compactItems<T extends {
     title: item.title,
   }));
 }
+
+/** One write that `--dry-run` reports instead of sending. `keys` are the item keys it touches. */
+export interface WouldChange {
+  action: string;
+  project?: string;
+  keys: string[];
+  fields?: Record<string, unknown>;
+}
+
+/** The JSON payload for a dry run: `{ dryRun: true, wouldChange: [...] }`. */
+export function dryRunPayload(wouldChange: readonly WouldChange[]): { dryRun: true; wouldChange: WouldChange[] } {
+  return { dryRun: true, wouldChange: [...wouldChange] };
+}
+
+/** Human form of a dry run, one line per planned write. */
+export function describeDryRun(wouldChange: readonly WouldChange[]): string {
+  if (wouldChange.length === 0) return "Dry run: nothing would change.";
+  const lines = wouldChange.map((c) => {
+    const fields = Object.entries(c.fields ?? {}).map(([k, v]) => `${k}=${typeof v === "string" ? v : JSON.stringify(v)}`);
+    return `  ${c.action}${c.project ? ` [${c.project}]` : ""}${c.keys.length ? ` ${c.keys.join(", ")}` : ""}${fields.length ? ` ${fields.join(" ")}` : ""}`;
+  });
+  return ["Dry run, nothing changed:", ...lines].join("\n");
+}
+
+/** The flags that were actually passed, raw, so a preview shows what was typed. */
+export function flagFields(flags: Readonly<Record<string, string | true>>, names: readonly string[]): Record<string, unknown> {
+  return Object.fromEntries(names.filter((n) => flags[n] !== undefined).map((n) => [n, flags[n]]));
+}

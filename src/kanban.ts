@@ -17,10 +17,11 @@ import { findIssue, formatReport, prDraft, syncGithub } from "./gh-sync.js";
 import { formatNext, formatPlan, pickNext, planSprint } from "./planning.js";
 import { execFileSync } from "node:child_process";
 import { extractItemKeys, hooksStatus, installHooks, outgoingCommitMessages, parsePushRefs, readActiveItem, setActiveItem, validateHookItems } from "./hooks.js";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { checkForUpdate, shouldShowUpdateNotice, updateInstallCommand } from "./update-check.js";
 import { resolve } from "node:path";
-import { classifyError, compactItems, formatTable, formatTree, parseArgs, parseKey, pickSprint, readAll, splitList, UsageError, type Parsed } from "./lib.js";
+import { classifyError, compactItems, describeDryRun, dryRunPayload, flagFields, formatTable, formatTree, parseArgs, parseKey, pickSprint, readAll, splitList, UsageError, type Parsed, type WouldChange } from "./lib.js";
 import { findCommand, schemaDocument } from "./schema.js";
 
 class CliError extends Error {
@@ -39,11 +40,29 @@ function cleanServerError(e: unknown): string {
   return (m?.[1] ?? raw.split("\n")[0]).trim();
 }
 
-async function main(argv: string[]) {
-  await runMain(argv);
+/** Flags that `items update` turns into a patch; --dry-run echoes the ones passed. */
+const UPDATE_FLAGS = ["title", "description", "type", "status", "priority", "assignee", "start", "due", "labels", "points", "parent", "depends-on", "sprint"];
+const CREATE_FLAGS = ["type", "title", "description", "parent", "status", "priority", "assignee", "labels", "points", "start", "due", "sprint"];
+
+/** Test seam: `deps.client` replaces the Convex client, so no server is contacted. */
+export interface CliDeps {
+  client?: CliConvexClient;
 }
 
-async function runMain(argv: string[]) {
+export async function main(argv: string[], deps: CliDeps = {}) {
+  await runMain(argv, deps);
+}
+
+async function createClient(endpoint: string, token: string | undefined): Promise<CliConvexClient> {
+  let url: string;
+  try { url = await resolveBackendUrl(endpoint); }
+  catch (error) { throw new CliError(error instanceof Error ? error.message : String(error)); }
+  const client = new ConvexHttpClient(url);
+  if (token) client.setAuth(token);
+  return client as unknown as CliConvexClient;
+}
+
+async function runMain(argv: string[], deps: CliDeps) {
   const { positionals: pos, flags } = parseArgs(argv);
   const json = flags.json === true;
   const out = (data: unknown, human: string) => console.log(json ? JSON.stringify(data, null, flags.compact === true ? undefined : 2) : human);
@@ -166,13 +185,11 @@ async function runMain(argv: string[]) {
     return;
   }
 
-  const endpoint = localSite;
-  let url: string;
-  try { url = await resolveBackendUrl(endpoint); }
-  catch (error) { throw new CliError(error instanceof Error ? error.message : String(error)); }
-  const client = new ConvexHttpClient(url) as unknown as CliConvexClient;
-  if (auth?.token) (client as unknown as ConvexHttpClient).setAuth(auth.token);
+  const client = deps.client ?? await createClient(localSite, auth?.token);
   const actor = str(flags.as) ?? process.env.KANBAN_USER ?? config.user ?? "cli";
+  // --dry-run: validation and key resolution run as usual; the write is reported instead of sent.
+  const dryRun = flags["dry-run"] === true;
+  const dryRunOut = (wouldChange: WouldChange[]) => out(dryRunPayload(wouldChange), describeDryRun(wouldChange));
   let accountDefaults: Promise<{ workspaceSlug: string | null; projectKey: string | null } | null> | undefined;
   const getAccountDefaults = () => accountDefaults ??= client.query(api.preferences.getCliDefaults, {}).then((value: any) => ({ workspaceSlug: value?.workspaceSlug ?? null, projectKey: value?.projectKey ?? null })).catch((error: unknown) => {
     if (/Could not find public function/i.test(error instanceof Error ? error.message : String(error))) return null;
@@ -320,7 +337,9 @@ async function runMain(argv: string[]) {
       if (sub === "create") {
         const key = req(flags, "key").toUpperCase();
         const selected = await workspaceFor();
-        await client.mutation(api.projects.create, { name: req(flags, "name"), key, description: str(flags.description) ?? "", organizationId: selected?.id });
+        const createArgs = { name: req(flags, "name"), key, description: str(flags.description) ?? "", organizationId: selected?.id };
+        if (dryRun) return dryRunOut([{ action: "projects.create", keys: [], fields: { key, name: createArgs.name, description: createArgs.description } }]);
+        await client.mutation(api.projects.create, createArgs);
         return out({ key }, `Created project ${key}`);
       }
       if (sub === "open") {
@@ -386,9 +405,19 @@ async function runMain(argv: string[]) {
           return out({ key, repo, number: issue.number, url: issue.html_url }, issue.html_url);
         }
         const draft = prDraft(d.item, issue, str(flags.body));
-        const args = ["pr", "create", "--repo", repo, "--title", str(flags.title) ?? draft.title, "--body", draft.body];
+        const title = str(flags.title) ?? draft.title;
+        const args = ["pr", "create", "--repo", repo, "--title", title, "--body", draft.body];
         if (str(flags.base)) args.push("--base", str(flags.base)!);
         if (flags.draft === true) args.push("--draft");
+        if (dryRun) {
+          // Opening the PR is an external write, so it is reported, not run.
+          const changes: WouldChange[] = [{ action: "gh.pr", project: projectOfKey(key), keys: [key], fields: { repo, title, base: str(flags.base), draft: flags.draft === true } }];
+          if (flags.draft !== true) {
+            changes.push({ action: "comment.add", keys: [key], fields: { body: `PR opened: ${title} (link added after creation)` } });
+            if (["backlog", "todo", "in_progress"].includes(d.item.status)) changes.push({ action: "items.move", keys: [key], fields: { status: "in_review" } });
+          }
+          return dryRunOut(changes);
+        }
         let url: string;
         try {
           url = execFileSync("gh", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim().split("\n").pop()!;
@@ -406,7 +435,6 @@ async function runMain(argv: string[]) {
       }
       const pk = await project();
       const workspaceSlug = await workspaceForProject(pk);
-      const dryRun = flags["dry-run"] === true;
       const lines: string[] = [];
       const report = await syncGithub(client, {
         projectKey: pk,
@@ -470,7 +498,7 @@ async function runMain(argv: string[]) {
         const pk = await project();
         const p = await client.query(api.projects.getByKey, { key: pk, workspaceSlug: await workspaceForProject(pk) });
         if (!p) throw new CliError(`Project ${pk} not found`, 3);
-        const id = await client.mutation(api.workItems.create, {
+        const createArgs = {
           projectId: p._id,
           actor,
           type: req(flags, "type") as never,
@@ -485,7 +513,9 @@ async function runMain(argv: string[]) {
           startDate: str(flags.start),
           dueDate: str(flags.due),
           sprintId: flags.sprint ? await sprintOf(req(flags, "sprint"), pk) : undefined,
-        });
+        };
+        if (dryRun) return dryRunOut([{ action: "items.create", project: pk, keys: flags.parent ? [req(flags, "parent").toUpperCase()] : [], fields: flagFields(flags, CREATE_FLAGS) }]);
+        const id = await client.mutation(api.workItems.create, createArgs);
         const created = (await client.query(api.workItems.listByProject, { projectId: p._id })).find((x) => x._id === id);
         return out({ id, key: created?.key }, `Created ${created?.key}`);
       }
@@ -510,18 +540,21 @@ async function runMain(argv: string[]) {
         };
         for (const k of Object.keys(patch)) if (patch[k] === undefined) delete patch[k];
         if (Object.keys(patch).length === 0) throw usage("Nothing to update — pass at least one field flag");
+        if (dryRun) return dryRunOut([{ action: "items.update", keys: [key.toUpperCase()], fields: flagFields(flags, UPDATE_FLAGS) }]);
         await client.mutation(api.workItems.update, { id, actor, ...patch } as never);
         return out({ key: key.toUpperCase(), updated: Object.keys(patch) }, `Updated ${key.toUpperCase()} (${Object.keys(patch).join(", ")})`);
       }
       if (sub === "move") {
         const key = need(arg, "item key");
         const id = await idOf(key);
-        await client.mutation(api.workItems.move, {
+        const moveArgs = {
           id, actor,
           status: req(flags, "status") as never,
           afterId: flags.after ? await idOf(req(flags, "after")) : undefined,
           beforeId: flags.before ? await idOf(req(flags, "before")) : undefined,
-        });
+        };
+        if (dryRun) return dryRunOut([{ action: "items.move", keys: [key.toUpperCase()], fields: flagFields(flags, ["status", "after", "before"]) }]);
+        await client.mutation(api.workItems.move, moveArgs);
         return out({ key: key.toUpperCase(), status: flags.status }, `Moved ${key.toUpperCase()} to ${flags.status}`);
       }
       if (sub === "rm") {
@@ -531,6 +564,11 @@ async function runMain(argv: string[]) {
           const rows = await client.query(api.agentApi.search, { projectKey: projectOfKey(key), epicKey: key, workspaceSlug: await workspaceForProject(projectOfKey(key)) });
           throw usage(`Refusing to delete ${key.toUpperCase()} and its subtree (${rows.length} item(s)) without --yes`);
         }
+        if (dryRun) {
+          const rows = await client.query(api.agentApi.search, { projectKey: projectOfKey(key), epicKey: key, workspaceSlug: await workspaceForProject(projectOfKey(key)) });
+          const subtree = [...new Set([key.toUpperCase(), ...rows.map((row: { key: string }) => row.key)])];
+          return dryRunOut([{ action: "items.rm", project: projectOfKey(key), keys: subtree }]);
+        }
         const r = await client.mutation(api.workItems.remove, { id, actor });
         return out(r, `Deleted ${r.deleted} item(s)`);
       }
@@ -539,13 +577,16 @@ async function runMain(argv: string[]) {
         const id = await idOf(key);
         const text = str(flags.text) ?? (await readStdin());
         if (!text.trim()) throw usage("Provide --text or pipe one item per line on stdin");
+        if (dryRun) return dryRunOut([{ action: "items.breakdown", keys: [key.toUpperCase()], fields: { text } }]);
         const r = await client.mutation(api.workItems.breakdown, { parentId: id, actor, text });
         return out(r, `Created ${r.created.length} child item(s) under ${key.toUpperCase()}`);
       }
       if (sub === "distribute") {
         const key = need(arg, "item key");
         const id = await idOf(key);
-        const r = await client.mutation(api.workItems.distribute, { parentId: id, actor, people: splitList(str(flags.people)) });
+        const people = splitList(str(flags.people));
+        if (dryRun) return dryRunOut([{ action: "items.distribute", keys: [key.toUpperCase()], fields: { people } }]);
+        const r = await client.mutation(api.workItems.distribute, { parentId: id, actor, people });
         return out(r, `Assigned ${r.assigned} child item(s)`);
       }
       if (sub === "bulk") {
@@ -553,13 +594,15 @@ async function runMain(argv: string[]) {
         if (keys.length === 0) throw usage("--ids WEB-1,WEB-2 is required");
         const ids = await idsOf(keys);
         const pk = projectOfKey(keys[0]);
-        const n = await client.mutation(api.workItems.bulkUpdate, {
+        const bulkArgs = {
           ids, actor,
           status: str(flags.status) as never,
           priority: str(flags.priority) as never,
           assignee: flags.assignee === undefined ? undefined : str(flags.assignee) === "none" ? null : str(flags.assignee)!,
           sprintId: flags.sprint === undefined ? undefined : str(flags.sprint) === "none" ? null : await sprintOf(req(flags, "sprint"), pk),
-        });
+        };
+        if (dryRun) return dryRunOut([{ action: "items.bulk", project: pk, keys: keys.map((k) => k.toUpperCase()), fields: flagFields(flags, ["status", "priority", "assignee", "sprint"]) }]);
+        const n = await client.mutation(api.workItems.bulkUpdate, bulkArgs);
         return out({ updated: n }, `Updated ${n} item(s)`);
       }
       break;
@@ -570,6 +613,7 @@ async function runMain(argv: string[]) {
       const id = await idOf(key);
       if (sub === "add") {
         const body = str(flags.body) ?? (await readStdin());
+        if (dryRun) return dryRunOut([{ action: "comment.add", keys: [key.toUpperCase()], fields: { body } }]);
         await client.mutation(api.comments.add, { workItemId: id, author: actor, body });
         return out({ key: key.toUpperCase() }, `Commented on ${key.toUpperCase()}`);
       }
@@ -589,11 +633,14 @@ async function runMain(argv: string[]) {
         return out(ss, ss.length ? formatTable(["NAME", "STATE", "START", "END"], ss.map((s) => [s.name, s.state, s.startDate ?? "-", s.endDate ?? "-"])) : "(no sprints)");
       }
       if (sub === "create") {
-        await client.mutation(api.sprints.create, { projectId: p._id, name: req(flags, "name"), goal: str(flags.goal) ?? "", startDate: str(flags.start), endDate: str(flags.end) });
+        const createArgs = { projectId: p._id, name: req(flags, "name"), goal: str(flags.goal) ?? "", startDate: str(flags.start), endDate: str(flags.end) };
+        if (dryRun) return dryRunOut([{ action: "sprints.create", project: pk, keys: [], fields: flagFields(flags, ["name", "goal", "start", "end"]) }]);
+        await client.mutation(api.sprints.create, createArgs);
         return out({ name: flags.name }, `Created sprint ${flags.name}`);
       }
       if (sub === "start" || sub === "complete") {
         const sprintId = await sprintOf(need(arg, "sprint name or id"), pk);
+        if (dryRun) return dryRunOut([{ action: `sprints.${sub}`, project: pk, keys: [], fields: { sprint: arg } }]);
         await client.mutation(sub === "start" ? api.sprints.start : api.sprints.complete, { sprintId });
         return out({ sprint: arg, state: sub === "start" ? "active" : "completed" }, `Sprint ${arg} ${sub === "start" ? "started" : "completed"}`);
       }
@@ -628,7 +675,13 @@ async function readStdin(): Promise<string> {
   return readAll(process.stdin, STDIN_TIMEOUT_MS);
 }
 
-main(process.argv.slice(2)).then(async () => {
+/** Run only when executed as the CLI (the npm bin is a symlink, so compare real paths). Tests import this module. */
+const isEntrypoint = (() => {
+  try { return realpathSync(process.argv[1] ?? "") === realpathSync(fileURLToPath(import.meta.url)); }
+  catch { return false; }
+})();
+
+if (isEntrypoint) main(process.argv.slice(2)).then(async () => {
   const argv = process.argv.slice(2);
   if (shouldShowUpdateNotice({ stdoutIsTTY: process.stdout.isTTY, command: argv })) {
     try {
