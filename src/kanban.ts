@@ -21,6 +21,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { checkForUpdate, shouldShowUpdateNotice, updateInstallCommand } from "./update-check.js";
 import { resolve } from "node:path";
 import { classifyError, compactItems, formatTable, formatTree, parseArgs, parseKey, pickSprint, readAll, splitList, UsageError, type Parsed } from "./lib.js";
+import { findCommand, schemaDocument } from "./schema.js";
 
 class CliError extends Error {
   constructor(message: string, readonly code: 1 | 2 | 3 = 1) {
@@ -52,6 +53,22 @@ async function runMain(argv: string[]) {
   }
   if (pos[0] === "agent-help") {
     console.log(AGENT_HELP);
+    return;
+  }
+  if (pos[0] === "schema") {
+    // Always JSON, and no config, auth, or network access, so it works offline and in CI.
+    const words = pos.slice(1);
+    if (words.length === 0) {
+      console.log(JSON.stringify(schemaDocument(), null, 2));
+      return;
+    }
+    const spec = findCommand(words);
+    if (!spec) {
+      console.error(JSON.stringify({ error: `Unknown command: ${words.join(" ")}. Run 'kanban schema' for every command.`, code: 3 }));
+      process.exitCode = 3;
+      return;
+    }
+    console.log(JSON.stringify(spec, null, 2));
     return;
   }
 
