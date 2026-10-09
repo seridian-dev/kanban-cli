@@ -77,5 +77,5 @@ export function updateInstallCommand(): string {
 export function shouldShowUpdateNotice(options: { stdoutIsTTY?: boolean; json?: boolean; command?: string[]; env?: NodeJS.ProcessEnv } = {}): boolean {
   const env = options.env ?? process.env;
   const command = options.command ?? process.argv.slice(2);
-  return options.stdoutIsTTY === true && options.json !== true && !command.includes("--json") && env.KANBAN_NO_UPDATE_CHECK !== "1" && !env.CI && command[0] !== "agent-help" && !(command[0] === "update" && command[1] === "check");
+  return options.stdoutIsTTY === true && options.json !== true && !command.includes("--json") && env.KANBAN_NO_UPDATE_CHECK !== "1" && !env.CI && command[0] !== "agent-help" && command[0] !== "schema" &&!(command[0] === "update" && command[1] === "check");
 }

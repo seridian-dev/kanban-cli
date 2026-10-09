@@ -6,6 +6,7 @@ LOCAL  kanban link --workspace acme --project WEB  → remember this repo  ·  k
 
 FIRST RUN  kanban login → kanban auth whoami → kanban projects list → kanban link --project KEY
 WORK CARD kanban items list --project WEB --assignee "$KANBAN_USER" --status todo --limit 10 --compact --json
+NEXT      kanban next --json (card to work on: priority, deps done, sprint, your work) · kanban plan --json (sprint status)
 INSPECT   kanban items get WEB-12 --json (read parent, dependencies, and comments before editing)
 START     kanban items move WEB-12 --status in_progress
 UPDATE    kanban comment add WEB-12 --body "Progress: ...; next: ...; blocker: none"
@@ -24,6 +25,7 @@ Writes are validated by the server. Local settings live in ~/.config/kanban/conf
 Use --compact --limit N --json to keep large boards out of the context window.
 Login opens Kanban in your browser and asks you to approve this device.
 Run 'kanban help' for the full reference. Never use --yes to delete unless requested.
+SCHEMA   kanban schema → JSON of every command, flag, type, enum, and destructive action. Use it instead of parsing help.
 `;
 
 export const FULL_HELP = `kanban — CLI for project work. Add --json for machine-readable output.
@@ -44,6 +46,7 @@ GET STARTED
   kanban hooks doctor                       inspect hook and active-item setup
   kanban config                             show saved site, user, and default project
   kanban agent-help                         get the coding-agent workflow
+  kanban schema [COMMAND WORDS]             JSON schema of commands, flags, enums, and destructive actions
   Kanban discovers the service from its website.
 
 SETUP   settings are saved in ~/.config/kanban/config.json; env vars override saved defaults
@@ -57,8 +60,10 @@ READ
   kanban tree WEB                               indented hierarchy of a project
   kanban items list --project WEB [--status S --assignee A --type T --epic WEB-1 --q text --limit N --compact]
   kanban items get WEB-12                       breadcrumb, children, dependencies, comments
+  kanban next [--project WEB --assignee NAME]    next card to work on: ready, highest priority, active sprint first
+  kanban plan [--project WEB]                   active sprint at a glance: ready, blocked, in progress, review, done, points
   kanban changelog WEB [--write CHANGELOG.md]    markdown of done work, grouped by day and epic
-  kanban projects list · sprints list --project WEB · comment list WEB-12
+  kanban projects list · kanban sprints list --project WEB · kanban comment list WEB-12
 
 WRITE
   Board, GitHub and git write commands take --dry-run: it validates and resolves keys exactly as the real run does,
@@ -74,9 +79,9 @@ WRITE
   kanban items bulk --ids WEB-1,WEB-2 [--status --assignee --priority --sprint NAME]
   kanban items rm WEB-12 --yes                      deletes the whole subtree; --yes is mandatory
   kanban comment add WEB-12 --body "..."
-  kanban hooks install | set-item KEY | doctor
+  kanban hooks install · kanban hooks set-item KEY · kanban hooks doctor
   kanban git connect --project WEB --provider github --repo owner/name
-  kanban git status --project WEB · git links WEB-12 · git branch WEB-12
+  kanban git status --project WEB · kanban git links WEB-12 · kanban git branch WEB-12
   kanban git prs --project WEB                     open PR/MR links grouped by card
   kanban git rotate-secret --project WEB --connection ID
   kanban gh sync --project WEB [--repo owner/name --dry-run --include-done --no-comments --relink --board-url URL]
@@ -88,8 +93,8 @@ WRITE
   kanban gh pr [WEB-12] [--draft --base main --title .. --body ..]   open a PR for this branch: "WEB-12: title",
         Closes #issue, acceptance criteria; key from the arg, the active item, or the branch name
   kanban gh issue [WEB-12]                         print the GitHub issue URL for a card
-  kanban sprints create --project WEB --name S1 [--goal .. --start .. --end ..] · sprints start|complete NAME --project WEB
-  kanban config set site https://kanban.seridian.dev · config set user alex · config set workspace acme · config set project WEB
+  kanban sprints create --project WEB --name S1 [--goal .. --start .. --end ..] · kanban sprints start|complete NAME --project WEB
+  kanban config set site https://kanban.seridian.dev · kanban config set user alex · kanban config set workspace acme · kanban config set project WEB
   kanban links remove [--path .]
 
 SAFE USE  Run 'tree' or 'items get' before restructuring. Prefer update --parent over delete+create.
