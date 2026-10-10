@@ -5,6 +5,8 @@ AUTH   kanban login  → browser sign-in  ·  kanban auth whoami  ·  kanban log
 LOCAL  kanban link --workspace acme --project WEB  → remember this repo  ·  kanban context
 
 FIRST RUN  kanban login → kanban auth whoami → kanban projects list → kanban link --project KEY
+RENAME    kanban projects update WEB --name "Web app" [--description "..."]  (owners and admins; key stays WEB)
+FOLDERS   kanban folders list · kanban projects move WEB --folder NAME|none  (name or id; ambiguous name exits 2)
 WORK CARD kanban items list --project WEB --assignee "$KANBAN_USER" --status todo --limit 10 --compact --json
 NEXT      kanban next --json (card to work on: priority, deps done, sprint, your work) · kanban plan --json (sprint status)
 INSPECT   kanban items get WEB-12 --json (read parent, dependencies, and comments before editing)
@@ -13,7 +15,7 @@ UPDATE    kanban comment add WEB-12 --body "Progress: ...; next: ...; blocker: n
 QA        kanban items move WEB-12 --status in_review
 FINISH    kanban items move WEB-12 --status done (only after verifying the work)
 GITHUB    kanban gh sync --dry-run → kanban gh sync (issues mirror cards; Kanban wins) · kanban gh pr (open PR, card → review)
-DRY RUN   Agents: add --dry-run to any write (items create/update/move/rm/breakdown/distribute/bulk, comment add, sprints, projects create, gh pr, git connect/rotate-secret)
+DRY RUN   Agents: add --dry-run to any write (items create/update/move/rm/breakdown/distribute/bulk, comment add, sprints, projects create/update/move, folders create/rename/delete, gh pr, git connect/rotate-secret)
           before running it, especially deletes: kanban items rm WEB-12 --yes --dry-run. Read wouldChange, then run the real command.
 
 Project lookup: --project > KANBAN_PROJECT > nearest linked folder > saved default > account CLI default.
@@ -64,12 +66,20 @@ READ
   kanban plan [--project WEB]                   active sprint at a glance: ready, blocked, in progress, review, done, points
   kanban changelog WEB [--write CHANGELOG.md]    markdown of done work, grouped by day and epic
   kanban projects list · kanban sprints list --project WEB · kanban comment list WEB-12
+  kanban folders list [--workspace acme]         the workspace's folders as a tree, with their projects
 
 WRITE
   Board, GitHub and git write commands take --dry-run: it validates and resolves keys exactly as the real run does,
   prints what would change (JSON: { dryRun: true, wouldChange: [...] }), exits 0, and sends no write.
   Preview a delete with: kanban items rm WEB-12 --yes --dry-run (lists the whole subtree).
   kanban projects create --key WEB --name "Name" [--description ..]
+  kanban projects update WEB [--name "Name"] [--description ..] [--workspace acme]
+        at least one of --name/--description; --description "" clears it; the key never changes
+  kanban projects move WEB --folder NAME|none     file a project in a folder; none moves it to the top level
+  kanban folders create NAME [--parent FOLDER]    folders nest one level deep
+  kanban folders rename FOLDER --name NEW
+  kanban folders delete FOLDER --yes              its projects and subfolders move to the top level; nothing else is deleted
+        FOLDER is a name or id; an ambiguous name exits 2 and lists the matches
   kanban items create --project WEB --type story --title "..." [--parent WEB-1 --status --priority --assignee --points N --start YYYY-MM-DD --due YYYY-MM-DD --labels a,b --sprint NAME --description ..]
   kanban items update WEB-12 [--title --description --type --status --priority --assignee --points --start --due --labels --parent WEB-1 --depends-on WEB-3,WEB-4 --sprint NAME]
         "none" clears assignee/points/start/due/parent/depends-on/sprint.

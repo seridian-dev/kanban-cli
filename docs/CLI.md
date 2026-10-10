@@ -62,6 +62,12 @@ kanban changelog WEB
 
 ```text
 kanban projects list
+kanban projects update WEB [--name NAME] [--description TEXT] [--workspace SLUG]
+kanban projects move WEB --folder NAME|none
+kanban folders list [--workspace SLUG]
+kanban folders create NAME [--parent FOLDER]
+kanban folders rename FOLDER --name NEW
+kanban folders delete FOLDER --yes
 kanban tree WEB
 kanban items list --project WEB [--status S --assignee A --type T --epic WEB-1 --q text --limit N --compact]
 kanban items get WEB-12
@@ -78,6 +84,10 @@ kanban git status --project WEB
 kanban gh sync --project WEB --dry-run
 kanban agent-help
 ```
+
+Rename a project or edit its description with `kanban projects update WEB --name "Web app" --description "Customer site"`. At least one of `--name` or `--description` is required. `--description ""` clears the description. The project key never changes. Only owners and admins of the workspace can update a project, and `--workspace` is needed only when more than one workspace you manage has that key.
+
+Folders group projects inside a workspace. `kanban folders list` prints them as a tree, and `kanban projects list` has a FOLDER column (`-` at the top level; JSON carries `folderName` and `folderId`). `kanban projects move KEY --folder NAME` files a project in a folder, and `--folder none` moves it to the top level. Folders nest one level deep. Refer to a folder by name or id. If a name matches more than one folder, the command exits `2` and lists the matches. `kanban folders delete FOLDER --yes` deletes only the folder: its projects and subfolders move to the top level. The `--yes` flag is required.
 
 `kanban next` prints the one card to pick up next. It only considers non-epic cards in the active sprint (or any sprint when none is active) that are `todo` (or `backlog` when no todo exists), whose dependencies are all done, and that are unassigned or assigned to `--assignee` (default: the CLI actor). Ties go to priority (urgent, high, medium, low, none), then sprint state, rank, and number. When nothing qualifies it says why, for example that cards are blocked by open dependencies. `kanban plan` summarizes the active sprint (or the next planned one): ready, blocked with their blocking keys, in progress, in review, done, and points. Both commands are read-only.
 
@@ -107,7 +117,7 @@ Global options `--workspace` and `--url` are not listed per command; they are se
 
 ## Dry runs
 
-Every board write command accepts `--dry-run`: `items create|update|move|rm|breakdown|distribute|bulk`, `comment add`, `sprints create|start|complete`, `projects create`, `gh pr`, and `git connect|rotate-secret`. A dry run resolves keys and checks flags exactly as the real run does, so the same usage errors and not-found errors appear. It then prints what would change and exits `0` without sending any write.
+Every board write command accepts `--dry-run`: `items create|update|move|rm|breakdown|distribute|bulk`, `comment add`, `sprints create|start|complete`, `projects create|update|move`, `folders create|rename|delete`, `gh pr`, and `git connect|rotate-secret`. A dry run resolves keys and checks flags exactly as the real run does, so the same usage errors and not-found errors appear. It then prints what would change and exits `0` without sending any write.
 
 ```sh
 kanban items rm WEB-12 --yes --dry-run          # lists WEB-12 and every child key

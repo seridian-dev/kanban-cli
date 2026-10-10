@@ -187,3 +187,27 @@ export function describeDryRun(wouldChange: readonly WouldChange[]): string {
 export function flagFields(flags: Readonly<Record<string, string | true>>, names: readonly string[]): Record<string, unknown> {
   return Object.fromEntries(names.filter((n) => flags[n] !== undefined).map((n) => [n, flags[n]]));
 }
+
+/**
+ * Parse `kanban projects update KEY [--name N] [--description D] [--workspace SLUG]`.
+ * At least one of --name or --description is required; an empty --description clears it.
+ * The key never changes, so it is only an identifier here.
+ */
+export function parseProjectUpdate(
+  positionals: readonly string[],
+  flags: Readonly<Record<string, string | true>>,
+): { key: string; name?: string; description?: string; workspaceSlug?: string } {
+  const key = positionals[2];
+  if (!key || !/^[A-Za-z]{2,5}$/.test(key)) throw new UsageError("Usage: kanban projects update KEY [--name NAME] [--description TEXT] [--workspace SLUG]");
+  const name = typeof flags.name === "string" ? flags.name.trim() : undefined;
+  const description = typeof flags.description === "string" ? flags.description : undefined;
+  const workspaceSlug = typeof flags.workspace === "string" ? flags.workspace : undefined;
+  if (name === undefined && description === undefined) throw new UsageError("Provide --name or --description to update");
+  if (name === "") throw new UsageError("--name cannot be blank");
+  return {
+    key: key.toUpperCase(),
+    ...(name !== undefined ? { name } : {}),
+    ...(description !== undefined ? { description } : {}),
+    ...(workspaceSlug !== undefined ? { workspaceSlug } : {}),
+  };
+}
