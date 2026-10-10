@@ -58,6 +58,44 @@ const SPECS: CommandSpec[] = [
     flags: [str("key", "Project key, uppercase letters and digits, e.g. WEB.", true), str("name", "Project name.", true), str("description", "Project description.")],
     json: true, destructive: false,
   },
+  {
+    command: "projects update", summary: "Rename a project and/or change its description. The key never changes; owners and admins only.",
+    args: [{ name: "key", required: true, description: "Project key such as WEB." }],
+    flags: [
+      str("name", "New project name."),
+      str("description", "New description. Pass an empty string to clear it."),
+      str("workspace", "Workspace slug. Needed only when more than one workspace has this key."),
+    ],
+    json: true, destructive: false,
+  },
+  {
+    command: "projects move", summary: "File a project in a folder, or at the top level with --folder none.",
+    args: [{ name: "key", required: true, description: "Project key such as WEB." }],
+    flags: [str("folder", "Folder name or id, or none for the top level.", true)],
+    json: true, destructive: false,
+  },
+  {
+    command: "folders list", summary: "Show the workspace's folders as a tree, with their projects.", args: [],
+    flags: [str("workspace", "Workspace slug. Defaults to the selected workspace.")], json: true, destructive: false,
+  },
+  {
+    command: "folders create", summary: "Create a folder. Folders nest one level deep.",
+    args: [{ name: "name", required: true, description: "Folder name." }],
+    flags: [str("parent", "Parent folder name or id. Omit for a top-level folder."), str("workspace", "Workspace slug. Defaults to the selected workspace.")],
+    json: true, destructive: false,
+  },
+  {
+    command: "folders rename", summary: "Rename a folder.",
+    args: [{ name: "folder", required: true, description: "Folder name or id." }],
+    flags: [str("name", "New folder name.", true), str("workspace", "Workspace slug. Defaults to the selected workspace.")],
+    json: true, destructive: false,
+  },
+  {
+    command: "folders delete", summary: "Delete a folder. Its projects and subfolders move to the top level; nothing else is deleted.",
+    args: [{ name: "folder", required: true, description: "Folder name or id." }],
+    flags: [bool("yes", "Required confirmation. Without it nothing is deleted.", true), str("workspace", "Workspace slug. Defaults to the selected workspace.")],
+    json: true, destructive: true,
+  },
   { command: "projects open", summary: "Open a project board in the browser.", args: [{ name: "key", required: false, description: "Project key. Defaults to the selected project." }], flags: [], json: true, destructive: false },
   {
     command: "link", summary: "Link this Git repo or a folder to a workspace project.", args: [],
@@ -231,7 +269,7 @@ const SPECS: CommandSpec[] = [
 
 /** Commands that change data on the board, GitHub, or git. Each accepts --dry-run (gh sync declares its own). */
 const WRITE_COMMANDS: ReadonlySet<string> = new Set([
-  "projects create", "items create", "items update", "items move", "items rm", "items breakdown", "items distribute", "items bulk",
+  "projects create", "projects update", "projects move", "folders create", "folders rename", "folders delete", "items create", "items update", "items move", "items rm", "items breakdown", "items distribute", "items bulk",
   "comment add", "sprints create", "sprints start", "sprints complete", "git connect", "git rotate-secret", "gh pr",
 ]);
 

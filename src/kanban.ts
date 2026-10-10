@@ -13,6 +13,7 @@ import { browserLogin, clearToken, openBrowser, readAuth } from "./auth.js";
 import { detectGithubRepo, gitRoot, linkedContext, readConfig, writeConfig } from "./config.js";
 import { formatChangelog, withGeneratedChangelog } from "./changelog.js";
 import { runGit } from "./git.js";
+import { findFolder, formatFolderTree } from "./folders.js";
 import { findIssue, formatReport, prDraft, syncGithub } from "./gh-sync.js";
 import { formatNext, formatPlan, pickNext, planSprint } from "./planning.js";
 import { execFileSync } from "node:child_process";
@@ -21,7 +22,7 @@ import { readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { checkForUpdate, shouldShowUpdateNotice, updateInstallCommand } from "./update-check.js";
 import { resolve } from "node:path";
-import { classifyError, compactItems, describeDryRun, dryRunPayload, flagFields, formatTable, formatTree, parseArgs, parseKey, pickSprint, readAll, splitList, UsageError, type Parsed, type WouldChange } from "./lib.js";
+import { classifyError, compactItems, describeDryRun, dryRunPayload, flagFields, formatTable, formatTree, parseArgs, parseKey, parseProjectUpdate, pickSprint, readAll, splitList, UsageError, type Parsed, type WouldChange } from "./lib.js";
 import { findCommand, schemaDocument } from "./schema.js";
 import { readRetriesFromEnv, wrapClient } from "./retry.js";
 
@@ -276,6 +277,19 @@ async function runMain(argv: string[], deps: CliDeps) {
     return hit._id as Id<"sprints">;
   };
   const projectOfKey = (key: string) => parseKey(key)!.project;
+  // Folders belong to a workspace. Every folder command resolves the workspace first, then the folder by name or id.
+  const requireWorkspace = async () => {
+    const selected = await workspaceFor();
+    if (!selected) throw usage("Folders live in a workspace. Pass --workspace SLUG, or set a default with `kanban config set workspace SLUG`.");
+    return selected;
+  };
+  const foldersIn = async (organizationId: string) => client.query(api.projectFolders.listOrganized, { organizationId });
+  const folderNamed = (folders: { _id: string; name: string; parentId?: string | null }[], ref: string) => {
+    const hit = findFolder(folders, ref);
+    if (hit.kind === "one") return hit.folder;
+    if (hit.kind === "none") throw new CliError(`Folder "${ref}" not found`, 3);
+    throw usage(`Folder "${ref}" is ambiguous. Matches: ${hit.matches.map((f) => `${f.name} (${f._id})`).join(", ")}. Pass the folder id instead.`);
+  };
 
   if (pos[0] === "next" || pos[0] === "plan") {
     const pk = await project();
@@ -333,11 +347,69 @@ async function runMain(argv: string[], deps: CliDeps) {
       }
       break;
     }
+    case "folders": {
+      if (sub === "list") {
+        const selected = await requireWorkspace();
+        const { folders, projects } = await foldersIn(selected.id);
+        return out(
+          { folders: folders.map((f) => ({ id: f._id, name: f.name, parentId: f.parentId ?? null })), projects: projects.map((p) => ({ key: p.key, name: p.name, folderId: p.folderId ?? null })) },
+          formatFolderTree(folders, projects),
+        );
+      }
+      if (sub === "create") {
+        const name = need(arg, "folder name");
+        const parentRef = str(flags.parent);
+        const selected = await requireWorkspace();
+        const parentId = parentRef ? folderNamed((await foldersIn(selected.id)).folders, parentRef)._id : undefined;
+        const fields = { name, ...(parentRef ? { parent: parentRef } : {}) };
+        if (dryRun) return dryRunOut([{ action: "folders.create", keys: [], fields }]);
+        await client.mutation(api.projectFolders.createFolder, { organizationId: selected.id, name, ...(parentId ? { parentId } : {}) });
+        return out({ name }, `Created folder ${name}`);
+      }
+      if (sub === "rename") {
+        const ref = need(arg, "folder");
+        const name = str(flags.name);
+        if (!name) throw usage("Use `kanban folders rename FOLDER --name NEW`");
+        const selected = await requireWorkspace();
+        const folder = folderNamed((await foldersIn(selected.id)).folders, ref);
+        if (dryRun) return dryRunOut([{ action: "folders.rename", keys: [], fields: { folder: folder.name, name } }]);
+        await client.mutation(api.projectFolders.renameFolder, { folderId: folder._id, name });
+        return out({ folder: folder._id, name }, `Renamed folder ${folder.name} to ${name}`);
+      }
+      if (sub === "delete") {
+        const ref = need(arg, "folder");
+        // Checked before any lookup, so a missing --yes never reaches the server.
+        if (flags.yes !== true) throw usage(`Refusing to delete folder ${ref} without --yes. Its projects move to the top level, and its subfolders move up to the top level. Nothing else is deleted.`);
+        const selected = await requireWorkspace();
+        const folder = folderNamed((await foldersIn(selected.id)).folders, ref);
+        if (dryRun) return dryRunOut([{ action: "folders.delete", keys: [], fields: { folder: folder.name } }]);
+        await client.mutation(api.projectFolders.deleteFolder, { folderId: folder._id });
+        return out({ folder: folder._id }, `Deleted folder ${folder.name}; its projects are now at the top level`);
+      }
+      break;
+    }
+
     case "projects": {
+      if (sub === "move") {
+        const key = need(arg, "project key").toUpperCase();
+        const folderRef = str(flags.folder);
+        if (!folderRef) throw usage("Use `kanban projects move KEY --folder NAME` or `--folder none` for the top level");
+        const project = await client.query(api.projects.getByKey, { key, workspaceSlug: await workspaceForProject(key) });
+        if (!project) throw new CliError(`Project ${key} not found`, 3);
+        if (!project.organizationId) throw usage("Only projects in a workspace can be filed in folders");
+        const toTopLevel = folderRef.toLowerCase() === "none";
+        const folder = toTopLevel ? undefined : folderNamed((await foldersIn(project.organizationId)).folders, folderRef);
+        const folderId = folder?._id ?? null;
+        const folderName = folder?.name ?? "none";
+        if (dryRun) return dryRunOut([{ action: "projects.move", keys: [key], fields: { folder: folderName } }]);
+        await client.mutation(api.projectFolders.moveProject, { projectId: project._id, folderId });
+        return out({ key, folderId }, `Moved ${key} to ${folder ? folderName : "the top level"}`);
+      }
       if (sub === "list") {
         const selected = await workspaceFor();
         const ps = await client.query(api.projects.list, selected ? { organizationId: selected.id } : {});
-        return out(ps, formatTable(["KEY", "NAME"], ps.map((p) => [p.key, p.name])));
+        const rows = ps.map((p) => ({ ...p, folderName: p.folderName ?? null, folderId: p.folderId ?? null }));
+        return out(rows, formatTable(["KEY", "NAME", "FOLDER"], rows.map((p) => [p.key, p.name, p.folderName ?? "-"])));
       }
       if (sub === "create") {
         const key = req(flags, "key").toUpperCase();
@@ -346,6 +418,18 @@ async function runMain(argv: string[], deps: CliDeps) {
         if (dryRun) return dryRunOut([{ action: "projects.create", keys: [], fields: { key, name: createArgs.name, description: createArgs.description } }]);
         await client.mutation(api.projects.create, createArgs);
         return out({ key }, `Created project ${key}`);
+      }
+      if (sub === "update") {
+        // The key never changes; the server checks that the caller owns or administers the workspace.
+        const input = parseProjectUpdate(pos, flags);
+        const workspaceSlug = input.workspaceSlug ?? await workspaceForProject(input.key);
+        const fields = {
+          ...(input.name !== undefined ? { name: input.name } : {}),
+          ...(input.description !== undefined ? { description: input.description } : {}),
+        };
+        if (dryRun) return dryRunOut([{ action: "projects.update", keys: [input.key], fields }]);
+        await client.mutation(api.projects.update, { key: input.key, ...(workspaceSlug ? { workspaceSlug } : {}), ...fields });
+        return out({ key: input.key }, `Updated project ${input.key}`);
       }
       if (sub === "open") {
         const key = (arg ?? await project()).toUpperCase();
