@@ -4,6 +4,7 @@ import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { spawn } from "node:child_process";
+import { hostname } from "node:os";
 
 const authFile = join(homedir(), ".config", "kanban", "auth.json");
 const MAX_CALLBACK_BYTES = 8 * 1024;
@@ -32,6 +33,51 @@ export function openBrowser(url: string): void {
   const child = spawn(command, args, { detached: true, stdio: "ignore" });
   child.on("error", () => {});
   child.unref();
+}
+
+const SUCCESS_CSP = "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'";
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] ?? char);
+}
+
+// Success page shown in the browser tab after "Authorize CLI". It contains no token.
+// It tries to close itself; if the browser keeps the tab open, it says so.
+export function successPage(machine: string, when: Date): string {
+  const time = when.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kanban CLI connected</title>
+<style>
+:root { color-scheme: light dark; --bg: #f7f7f5; --fg: #1d1d1b; --muted: #5f5f58; --accent: #2f6f4e; --card: #ffffff; --line: #e2e2dc; }
+@media (prefers-color-scheme: dark) { :root { --bg: #161715; --fg: #f1f1ec; --muted: #a3a39a; --accent: #7fc29b; --card: #1f201d; --line: #33352f; } }
+:root[data-theme="light"] { --bg: #f7f7f5; --fg: #1d1d1b; --muted: #5f5f58; --accent: #2f6f4e; --card: #ffffff; --line: #e2e2dc; }
+:root[data-theme="dark"] { --bg: #161715; --fg: #f1f1ec; --muted: #a3a39a; --accent: #7fc29b; --card: #1f201d; --line: #33352f; }
+body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 32rem; width: 100%; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 28px; box-sizing: border-box; }
+.brand { font-weight: 700; color: var(--accent); letter-spacing: .02em; margin: 0 0 16px; }
+h1 { font-size: 1.4rem; margin: 0 0 8px; }
+p { margin: 8px 0; color: var(--muted); }
+.meta { font-size: .9rem; }
+#fallback[hidden] { display: none; }
+</style>
+</head>
+<body>
+<main>
+<p class="brand">Kanban</p>
+<h1>Signed in to the Kanban CLI. You can close this tab.</h1>
+<p class="meta">Machine: <strong>${escapeHtml(machine)}</strong> · Signed in: ${escapeHtml(time)}</p>
+<p id="fallback" hidden>Your browser kept this tab open — close it any time.</p>
+</main>
+<script>
+setTimeout(function () { window.close(); }, 800);
+setTimeout(function () { document.getElementById("fallback").hidden = false; }, 1500);
+</script>
+</body>
+</html>`;
 }
 
 type LoginOptions = {
@@ -100,8 +146,13 @@ export async function browserLogin(site: string, options: LoginOptions = {}): Pr
     }
     try {
       await saveToken(token, siteUrl.origin, options.file);
-      response.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
-      response.end("<!doctype html><title>Kanban CLI connected</title><main style='font:16px system-ui;max-width:36rem;margin:12vh auto;padding:1rem'><h1>You're signed in to Kanban CLI</h1><p>You can close this tab and return to your terminal.</p></main>");
+      response.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": SUCCESS_CSP,
+      });
+      response.end(successPage(hostname(), new Date()));
       done();
     } catch (error) {
       response.writeHead(500, { "Cache-Control": "no-store" }).end("Could not save Kanban CLI credentials. Return to the terminal and try again.");

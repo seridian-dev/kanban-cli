@@ -12,7 +12,7 @@ kanban login
 kanban agent-help
 ```
 
-Your browser opens. Sign in to Kanban and choose **Authorize CLI**. After approval, return to your terminal. The CLI token is saved under `~/.config/kanban/auth.json` with owner-only file and directory permissions. It expires after three days; run `kanban login` again to reconnect. `kanban logout` removes the token from this computer.
+Your browser opens. Sign in to Kanban and choose **Authorize CLI**. After approval, the browser tab tries to close itself; if the browser keeps it open, it says you can close it. Return to your terminal. The CLI token is saved under `~/.config/kanban/auth.json` with owner-only file and directory permissions. It expires after three days; run `kanban login` again to reconnect. `kanban logout` removes the token from this computer.
 
 ## First use
 
