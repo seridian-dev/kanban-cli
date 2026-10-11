@@ -29,6 +29,10 @@ kanban items list --project WEB --limit 10
 kanban items get WEB-12
 ```
 
+Rename a project or change its description with `kanban projects update WEB --name "Web app" --description "Customer site"`. The key stays the same. Only owners and admins can do this; add `--workspace SLUG` if the key exists in more than one workspace.
+
+Folders group projects inside a workspace: `kanban folders list` shows the tree, and `kanban projects move WEB --folder "Clients"` files a project (`--folder none` moves it to the top level). `kanban folders delete FOLDER --yes` moves that folder's projects and subfolders to the top level; it deletes nothing else.
+
 Replace `WEB` and `WEB-12` with your own project and item keys. To see the short guide for coding agents, run:
 
 ```sh

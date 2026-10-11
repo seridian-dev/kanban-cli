@@ -88,6 +88,7 @@ const WRITES: { name: string; argv: string[]; action: string; keys: string[] }[]
   { name: "sprints start", argv: ["sprints", "start", "S1", "--project", "WEB"], action: "sprints.start", keys: [] },
   { name: "sprints complete", argv: ["sprints", "complete", "S1", "--project", "WEB"], action: "sprints.complete", keys: [] },
   { name: "projects create", argv: ["projects", "create", "--key", "NEW", "--name", "New"], action: "projects.create", keys: [] },
+  { name: "projects update", argv: ["projects", "update", "WEB", "--name", "Web 2"], action: "projects.update", keys: ["WEB"] },
   { name: "git connect", argv: ["git", "connect", "--project", "WEB", "--provider", "github", "--repo", "a/b"], action: "git.connect", keys: [] },
   { name: "git rotate-secret", argv: ["git", "rotate-secret", "--project", "WEB", "--connection", "c1"], action: "git.rotate-secret", keys: [] },
 ];

@@ -9,7 +9,7 @@ import { COMMANDS, booleanFlagNames, findCommand, schemaDocument, schemaVersion 
 const KANBAN = new URL("./kanban.js", import.meta.url).pathname;
 
 /** Groups whose second word is a subcommand (`kanban items get`), not an argument. */
-const GROUPS_WITH_SUBCOMMANDS = new Set(["auth", "projects", "items", "comment", "sprints", "git", "gh", "links", "hooks", "config", "update"]);
+const GROUPS_WITH_SUBCOMMANDS = new Set(["auth", "projects", "folders", "items", "comment", "sprints", "git", "gh", "links", "hooks", "config", "update"]);
 
 function helpCommandKeys(help: string): Set<string> {
   const keys = new Set<string>();
@@ -59,7 +59,7 @@ test("enum values match the statuses, types, and priorities documented in FULL_H
 
 test("destructive commands are exactly the ones that delete or invalidate data", () => {
   const destructive = COMMANDS.filter((c) => c.destructive).map((c) => c.command).sort();
-  assert.deepEqual(destructive, ["git rotate-secret", "items rm"]);
+  assert.deepEqual(destructive, ["folders delete", "git rotate-secret", "items rm"]);
   const rm = findCommand(["items", "rm"]);
   assert.equal(rm?.flags.find((f) => f.name === "yes")?.required, true);
 });
