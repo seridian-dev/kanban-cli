@@ -36,6 +36,7 @@ export const FULL_HELP = `kanban — CLI for project work. Add --json for machin
 GET STARTED
   kanban login                              sign in safely in your browser
   kanban login --code                       sign in from any device: open the URL, type the code (alias --no-browser)
+  kanban login --code <CODE>                finish a code sign-in started without a terminal (scripts, agents)
   kanban auth whoami                        check the account linked to this device
   kanban projects list                      choose a project
   kanban link --workspace acme --project WEB  link this Git repo to a workspace project

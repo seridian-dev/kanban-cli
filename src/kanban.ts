@@ -9,7 +9,7 @@ import type { Id } from "./dataModel.js";
 import type { CliConvexClient } from "./client.js";
 import { AGENT_HELP, FULL_HELP } from "./help.js";
 import { DEFAULT_KANBAN_URL, resolveBackendUrl } from "./backend.js";
-import { browserLogin, clearToken, codeLogin, openBrowser, readAuth, selectLoginMode } from "./auth.js";
+import { browserLogin, clearToken, codeLogin, finishCodeLogin, openBrowser, readAuth, selectLoginMode } from "./auth.js";
 import { detectGithubRepo, gitRoot, linkedContext, readConfig, writeConfig } from "./config.js";
 import { formatChangelog, withGeneratedChangelog } from "./changelog.js";
 import { runGit } from "./git.js";
@@ -180,9 +180,13 @@ async function runMain(argv: string[], deps: CliDeps) {
   if (group === "login" || (group === "auth" && sub === "login")) {
     const site = localSite;
     if (/\.convex\.(cloud|site)(\/|$)/.test(site)) throw usage("Sign-in needs the Kanban website URL, for example https://kanban.seridian.dev");
-    if (pos.length > (group === "login" ? 1 : 2)) throw usage("`kanban login` takes no arguments. Run `kanban login --code` and type the code when asked.");
+    const extra = pos.slice(group === "login" ? 1 : 2);
     const mode = selectLoginMode({ code: flags.code === true, noBrowser: flags["no-browser"] === true, browser: flags.browser === true }, process.env, process.platform);
-    if (mode === "code") await codeLogin(site);
+    if (extra.length > 1 || (extra.length === 1 && mode !== "code")) {
+      throw usage("`kanban login` takes at most a sign-in code: kanban login --code <CODE>.");
+    }
+    if (mode === "code" && extra.length === 1) await finishCodeLogin(site, extra[0]);
+    else if (mode === "code") await codeLogin(site);
     else await browserLogin(site);
     return;
   }
