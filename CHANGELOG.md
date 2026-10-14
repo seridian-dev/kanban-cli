@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.2
+
+- Fix: regenerate package-lock.json with npm 11 (the version the publish runner uses) so `npm ci` includes every platform's esbuild package. 0.3.0 and 0.3.1 could not publish.
+
 ## 0.3.1
 
 - Fix: refresh package-lock.json so the npm trusted-publishing workflow can install (0.3.0's tag could not publish).
