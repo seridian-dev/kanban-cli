@@ -1,14 +1,22 @@
 import { createServer } from "node:http";
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { spawn } from "node:child_process";
 import { hostname } from "node:os";
+import { createInterface } from "node:readline/promises";
+import { ConvexHttpClient } from "convex/browser";
+import { makeFunctionReference } from "convex/server";
+import { resolveBackendUrl } from "./backend.js";
+import { UsageError } from "./lib.js";
 
 const authFile = join(homedir(), ".config", "kanban", "auth.json");
 const MAX_CALLBACK_BYTES = 8 * 1024;
 const LOCAL_ADDRESSES = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
+const SIGNED_IN_MESSAGE = "Signed in. Your Kanban access token is stored in ~/.config/kanban/auth.json with owner-only permissions. It expires after three days; run `kanban login` again to reconnect.";
+const MIN_TOKEN_LENGTH = 20;
+const MAX_TOKEN_LENGTH = 4096;
 
 export async function readAuth(file = authFile): Promise<{ token: string; site?: string } | null> {
   try {
@@ -86,13 +94,18 @@ type LoginOptions = {
   timeoutMs?: number;
 };
 
-export async function browserLogin(site: string, options: LoginOptions = {}): Promise<void> {
+function loginSite(site: string): URL {
   let siteUrl: URL;
   try { siteUrl = new URL(site); }
   catch { throw new Error("Set the Kanban website URL, such as https://kanban.seridian.dev."); }
   if (siteUrl.protocol !== "https:" && !(siteUrl.protocol === "http:" && ["localhost", "127.0.0.1"].includes(siteUrl.hostname))) {
     throw new Error("Kanban sign-in requires HTTPS for remote sites.");
   }
+  return siteUrl;
+}
+
+export async function browserLogin(site: string, options: LoginOptions = {}): Promise<void> {
+  const siteUrl = loginSite(site);
 
   const state = randomBytes(32).toString("hex");
   let finish!: () => void;
@@ -140,7 +153,7 @@ export async function browserLogin(site: string, options: LoginOptions = {}): Pr
     const receivedState = form.get("state") ?? "";
     const token = form.get("token") ?? "";
     const a = Buffer.from(state), b = Buffer.from(receivedState);
-    if (a.length !== b.length || !timingSafeEqual(a, b) || token.length < 20 || token.length > 4096) {
+    if (a.length !== b.length || !timingSafeEqual(a, b) || token.length < MIN_TOKEN_LENGTH || token.length > MAX_TOKEN_LENGTH) {
       response.writeHead(400, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" }).end("Sign-in check failed. Close this tab and run kanban login again.");
       return;
     }
@@ -173,11 +186,163 @@ export async function browserLogin(site: string, options: LoginOptions = {}): Pr
     login.searchParams.set("callback", callback);
     login.searchParams.set("state", state);
     console.log("Opening Kanban in your browser. Sign in, then choose ‘Authorize CLI’.\nIf it does not open, visit:\n" + login.href);
+    console.log("Signing in from another device? Run `kanban login --code`.");
     (options.open ?? openBrowser)(login.href);
     await completed;
-    console.log("Signed in. Your Kanban access token is stored in ~/.config/kanban/auth.json with owner-only permissions. It expires after three days; run `kanban login` again to reconnect.");
+    console.log(SIGNED_IN_MESSAGE);
   } catch (error) {
     done(error instanceof Error ? error : new Error(String(error)));
     throw error;
   }
+}
+
+export type LoginMode = "code" | "browser";
+
+const isSet = (value: string | undefined): boolean => value !== undefined && value !== "";
+
+/**
+ * Whether a browser opened by this process would appear in front of the user:
+ * false over SSH, and false on Linux when neither X11 nor Wayland is available.
+ */
+export function hasLocalDisplay(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): boolean {
+  if (isSet(env.SSH_CONNECTION) || isSet(env.SSH_TTY)) return false;
+  if (platform === "linux" && !isSet(env.DISPLAY) && !isSet(env.WAYLAND_DISPLAY)) return false;
+  return true;
+}
+
+/** Plain `kanban login`: the localhost callback only works when the browser runs on this machine. */
+export function detectLoginMode(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): LoginMode {
+  return hasLocalDisplay(env, platform) ? "browser" : "code";
+}
+
+/** Applies `--code` / `--no-browser` / `--browser` on top of detection. */
+export function selectLoginMode(
+  flags: { code?: boolean; noBrowser?: boolean; browser?: boolean },
+  env: NodeJS.ProcessEnv,
+  platform: NodeJS.Platform,
+): LoginMode {
+  const wantsCode = flags.code === true || flags.noBrowser === true;
+  if (wantsCode && flags.browser === true) throw new UsageError("Use either --code or --browser, not both.");
+  if (wantsCode) return "code";
+  if (flags.browser === true) return "browser";
+  return detectLoginMode(env, platform);
+}
+
+/** 32 random bytes as base64url (43 characters). It stays on this machine. */
+export function createVerifier(): string {
+  return randomBytes(32).toString("base64url");
+}
+
+/** base64url, without padding, of SHA-256(verifier). Sent to the web page; the server checks it on redeem. */
+export function challengeFor(verifier: string): string {
+  return createHash("sha256").update(verifier).digest("base64url");
+}
+
+/** `kj7q-m2xp ` → `KJ7QM2XP`. */
+export function normalizeCode(input: string): string {
+  return input.trim().toUpperCase().replace(/[\s-]+/g, "");
+}
+
+export type RedeemCode = (args: { code: string; verifier: string }) => Promise<unknown>;
+
+/** Calls the public Convex mutation `cliLogin:redeemCode` on the backend the site advertises. */
+export function convexRedeemer(site: string): RedeemCode {
+  const redeemCode = makeFunctionReference<"mutation", { code: string; verifier: string }, unknown>("cliLogin:redeemCode");
+  let client: Promise<ConvexHttpClient> | undefined;
+  return async (args) => {
+    client ??= resolveBackendUrl(site).then((url) => new ConvexHttpClient(url));
+    return (await client).mutation(redeemCode, args);
+  };
+}
+
+/** Text of a Convex or plain error, including ConvexError data, for matching. */
+function errorText(error: unknown): string {
+  const parts: string[] = [];
+  if (error instanceof Error) parts.push(error.message);
+  else parts.push(String(error));
+  if (typeof error === "object" && error !== null && "data" in error) {
+    const data: unknown = error.data;
+    if (typeof data === "string") parts.push(data);
+  }
+  return parts.join("\n");
+}
+
+const isInvalidOrExpired = (error: unknown): boolean => /invalid or expired/i.test(errorText(error));
+
+function tokenFrom(result: unknown): string {
+  const token = typeof result === "object" && result !== null && "token" in result ? result.token : undefined;
+  if (typeof token !== "string" || token.length < MIN_TOKEN_LENGTH || token.length > MAX_TOKEN_LENGTH) {
+    throw new Error("Kanban did not return a valid token. Run `kanban login --code` to try again.");
+  }
+  return token;
+}
+
+/** Reads one line from the terminal. Rejects if stdin closes first (Ctrl-D). */
+async function promptLine(question: string): Promise<string> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true });
+  try {
+    return await new Promise<string>((resolve, reject) => {
+      rl.once("close", () => reject(new Error("Sign-in cancelled.")));
+      rl.question(question).then(resolve, reject);
+    });
+  } finally {
+    rl.close();
+  }
+}
+
+type CodeLoginOptions = {
+  file?: string;
+  /** Whether stdin is an interactive terminal. Defaults to process.stdin.isTTY. */
+  isTTY?: boolean;
+  prompt?: (question: string) => Promise<string>;
+  redeem?: RedeemCode;
+  /** Also opens the URL locally. Defaults to the system browser when a local display is available. */
+  open?: (url: string) => void;
+  log?: (line: string) => void;
+  maxAttempts?: number;
+};
+
+/**
+ * Paste-back sign-in for SSH and headless machines: the user approves on any device,
+ * the page shows a one-time code, and this process redeems it with its secret verifier.
+ */
+export async function codeLogin(site: string, options: CodeLoginOptions = {}): Promise<void> {
+  const siteUrl = loginSite(site);
+  if (!(options.isTTY ?? process.stdin.isTTY === true)) {
+    throw new Error("`kanban login --code` asks you to type a code. Run it in an interactive terminal, not with piped or redirected input.");
+  }
+  const log = options.log ?? ((line: string) => console.log(line));
+  const prompt = options.prompt ?? promptLine;
+  const redeem = options.redeem ?? convexRedeemer(siteUrl.origin);
+  const maxAttempts = options.maxAttempts ?? 3;
+
+  const verifier = createVerifier();
+  const login = new URL("/cli/login", siteUrl.origin);
+  login.searchParams.set("mode", "code");
+  login.searchParams.set("challenge", challengeFor(verifier));
+  log("Open this URL on any device, sign in and choose ‘Authorize CLI’:\n" + login.href + "\nThen type the code it shows here.");
+  const open = options.open ?? (hasLocalDisplay(process.env, process.platform) ? openBrowser : undefined);
+  open?.(login.href);
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const left = maxAttempts - attempt;
+    const retryHint = `(${left} ${left === 1 ? "attempt" : "attempts"} left)`;
+    const code = normalizeCode(await prompt("Code: "));
+    if (!code) {
+      if (left > 0) log(`No code entered. Type the code shown in your browser ${retryHint}.`);
+      continue;
+    }
+    let result: unknown;
+    try {
+      result = await redeem({ code, verifier });
+    } catch (error) {
+      if (!isInvalidOrExpired(error)) throw error;
+      if (left > 0) log(`That code is invalid or expired. Check it and type it again ${retryHint}.`);
+      continue;
+    }
+    await saveToken(tokenFrom(result), siteUrl.origin, options.file);
+    log(SIGNED_IN_MESSAGE);
+    return;
+  }
+  throw new Error(`Sign-in failed: no valid code after ${maxAttempts} attempts (invalid or expired). Run \`kanban login --code\` to start again.`);
 }

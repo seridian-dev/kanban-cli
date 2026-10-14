@@ -1,7 +1,7 @@
 export const AGENT_HELP = `KANBAN CLI — agent quickstart (token-efficient)
 
 SETUP  kanban login  (site defaults to https://kanban.seridian.dev)
-AUTH   kanban login  → browser sign-in  ·  kanban auth whoami  ·  kanban logout
+AUTH   kanban login  → browser sign-in  ·  kanban login --code  → over SSH/headless, type a one-time code  ·  kanban auth whoami  ·  kanban logout
 LOCAL  kanban link --workspace acme --project WEB  → remember this repo  ·  kanban context
 
 FIRST RUN  kanban login → kanban auth whoami → kanban projects list → kanban link --project KEY
@@ -25,7 +25,8 @@ The CLI checks npm for updates at most daily; run 'kanban update check' to check
 Use 'kanban config' for saved site/user/workspace/project settings and 'kanban links list' for links.
 Writes are validated by the server. Local settings live in ~/.config/kanban/config.json.
 Use --compact --limit N --json to keep large boards out of the context window.
-Login opens Kanban in your browser and asks you to approve this device.
+Login opens Kanban in your browser and asks you to approve this device. Over SSH or without a display it prints a URL
+and asks for a one-time code instead (--code forces this, --browser forces the browser). Login needs the user's terminal.
 Run 'kanban help' for the full reference. Never use --yes to delete unless requested.
 SCHEMA   kanban schema → JSON of every command, flag, type, enum, and destructive action. Use it instead of parsing help.
 `;
@@ -34,6 +35,7 @@ export const FULL_HELP = `kanban — CLI for project work. Add --json for machin
 
 GET STARTED
   kanban login                              sign in safely in your browser
+  kanban login --code                       sign in from any device: open the URL, type the code (alias --no-browser)
   kanban auth whoami                        check the account linked to this device
   kanban projects list                      choose a project
   kanban link --workspace acme --project WEB  link this Git repo to a workspace project
@@ -52,7 +54,8 @@ GET STARTED
   Kanban discovers the service from its website.
 
 SETUP   settings are saved in ~/.config/kanban/config.json; env vars override saved defaults
-AUTH    login opens a browser approval flow; logout clears the device session.
+AUTH    login opens a browser approval flow; over SSH or without a display it uses a one-time code instead.
+        --code (alias --no-browser) forces the code flow, --browser the browser flow. logout clears the device session.
 EXIT    0 ok · 1 server/runtime error · 2 usage error · 3 not found
 KEYS    Items are addressed by key (WEB-12). Statuses: backlog todo in_progress in_review done.
         Types: epic story task bug subtask. Priorities: urgent high medium low none.

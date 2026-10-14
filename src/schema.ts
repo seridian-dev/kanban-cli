@@ -49,7 +49,15 @@ const JSON_FLAG = bool("json", "Print machine-readable JSON.");
 const DRY_RUN_FLAG = bool("dry-run", "Print the planned changes without sending them.");
 
 const SPECS: CommandSpec[] = [
-  { command: "login", summary: "Sign in through the browser and approve this device.", args: [], flags: [], json: false, destructive: false },
+  {
+    command: "login", summary: "Sign in and approve this device. Uses a one-time code over SSH or without a display, otherwise the local browser.", args: [],
+    flags: [
+      bool("code", "Sign in from any device: open the printed URL, then type the one-time code it shows. Needs an interactive terminal."),
+      bool("no-browser", "Alias for --code."),
+      bool("browser", "Force the local browser flow even over SSH or without a display."),
+    ],
+    json: false, destructive: false,
+  },
   { command: "logout", summary: "Clear the saved CLI session on this device.", args: [], flags: [], json: false, destructive: false },
   { command: "auth whoami", summary: "Show the account linked to this device.", args: [], flags: [], json: true, destructive: false },
   { command: "projects list", summary: "List projects in the selected workspace.", args: [], flags: [], json: true, destructive: false },
