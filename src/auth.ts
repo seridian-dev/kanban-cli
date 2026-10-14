@@ -12,6 +12,10 @@ import { resolveBackendUrl } from "./backend.js";
 import { UsageError } from "./lib.js";
 
 const authFile = join(homedir(), ".config", "kanban", "auth.json");
+/** A code sign-in started without a terminal: the verifier waits here for `kanban login --code <CODE>`. */
+const pendingLoginFile = join(homedir(), ".config", "kanban", "pending-login.json");
+/** Matches the server's code lifetime; a pending sign-in is useless after it. */
+const PENDING_LOGIN_TTL_MS = 5 * 60_000;
 const MAX_CALLBACK_BYTES = 8 * 1024;
 const LOCAL_ADDRESSES = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
 const SIGNED_IN_MESSAGE = "Signed in. Your Kanban access token is stored in ~/.config/kanban/auth.json with owner-only permissions. It expires after three days; run `kanban login` again to reconnect.";
@@ -27,12 +31,17 @@ export async function readAuth(file = authFile): Promise<{ token: string; site?:
 
 export async function clearToken(file = authFile): Promise<void> { await rm(file, { force: true }); }
 
-async function saveToken(token: string, site: string, file = authFile): Promise<void> {
+/** Writes JSON readable only by the owner, in a directory only the owner can enter. */
+async function writePrivateJson(file: string, value: unknown): Promise<void> {
   const directory = dirname(file);
   await mkdir(directory, { recursive: true, mode: 0o700 });
   await chmod(directory, 0o700);
-  await writeFile(file, JSON.stringify({ token, site: new URL(site).origin, savedAt: new Date().toISOString() }), { mode: 0o600 });
+  await writeFile(file, JSON.stringify(value), { mode: 0o600 });
   await chmod(file, 0o600);
+}
+
+async function saveToken(token: string, site: string, file = authFile): Promise<void> {
+  await writePrivateJson(file, { token, site: new URL(site).origin, savedAt: new Date().toISOString() });
 }
 
 export function openBrowser(url: string): void {
@@ -292,6 +301,9 @@ async function promptLine(question: string): Promise<string> {
 
 type CodeLoginOptions = {
   file?: string;
+  /** Where a sign-in started without a terminal keeps its verifier. */
+  pendingFile?: string;
+  now?: () => number;
   /** Whether stdin is an interactive terminal. Defaults to process.stdin.isTTY. */
   isTTY?: boolean;
   prompt?: (question: string) => Promise<string>;
@@ -308,10 +320,8 @@ type CodeLoginOptions = {
  */
 export async function codeLogin(site: string, options: CodeLoginOptions = {}): Promise<void> {
   const siteUrl = loginSite(site);
-  if (!(options.isTTY ?? process.stdin.isTTY === true)) {
-    throw new Error("`kanban login --code` asks you to type a code. Run it in an interactive terminal, not with piped or redirected input.");
-  }
   const log = options.log ?? ((line: string) => console.log(line));
+  const interactive = options.isTTY ?? process.stdin.isTTY === true;
   const prompt = options.prompt ?? promptLine;
   const redeem = options.redeem ?? convexRedeemer(siteUrl.origin);
   const maxAttempts = options.maxAttempts ?? 3;
@@ -320,6 +330,14 @@ export async function codeLogin(site: string, options: CodeLoginOptions = {}): P
   const login = new URL("/cli/login", siteUrl.origin);
   login.searchParams.set("mode", "code");
   login.searchParams.set("challenge", challengeFor(verifier));
+  if (!interactive) {
+    // No terminal to prompt (scripts, `!` in an agent, piped input): keep the verifier on
+    // this machine and finish with a second command that takes the code as an argument.
+    const now = options.now ?? Date.now;
+    await writePrivateJson(options.pendingFile ?? pendingLoginFile, { site: siteUrl.origin, verifier, expiresAt: now() + PENDING_LOGIN_TTL_MS });
+    log("Open this URL on any device, sign in and choose ‘Authorize CLI’:\n" + login.href + "\nThen run: kanban login --code <CODE>   (within 5 minutes, with the code the page shows)");
+    return;
+  }
   log("Open this URL on any device, sign in and choose ‘Authorize CLI’:\n" + login.href + "\nThen type the code it shows here.");
   const open = options.open ?? (hasLocalDisplay(process.env, process.platform) ? openBrowser : undefined);
   open?.(login.href);
@@ -345,4 +363,51 @@ export async function codeLogin(site: string, options: CodeLoginOptions = {}): P
     return;
   }
   throw new Error(`Sign-in failed: no valid code after ${maxAttempts} attempts (invalid or expired). Run \`kanban login --code\` to start again.`);
+}
+
+type PendingLogin = { site: string; verifier: string; expiresAt: number };
+
+async function readPendingLogin(file: string): Promise<PendingLogin | null> {
+  let data: unknown;
+  try { data = JSON.parse(await readFile(file, "utf8")); }
+  catch { return null; }
+  if (typeof data !== "object" || data === null) return null;
+  const { site, verifier, expiresAt } = data as Record<string, unknown>;
+  if (typeof site !== "string" || typeof verifier !== "string" || typeof expiresAt !== "number") return null;
+  return { site, verifier, expiresAt };
+}
+
+/**
+ * Second step of a code sign-in started without a terminal: `kanban login --code <CODE>`.
+ * An invalid code keeps the pending sign-in so the user can retry until it expires.
+ */
+export async function finishCodeLogin(site: string, code: string, options: CodeLoginOptions = {}): Promise<void> {
+  const siteUrl = loginSite(site);
+  const pendingFile = options.pendingFile ?? pendingLoginFile;
+  const now = options.now ?? Date.now;
+  const log = options.log ?? ((line: string) => console.log(line));
+  const normalized = normalizeCode(code);
+  if (!normalized) throw new UsageError("Pass the code the sign-in page shows: kanban login --code <CODE>.");
+  const pending = await readPendingLogin(pendingFile);
+  if (!pending) throw new Error("No pending sign-in on this machine. Run `kanban login --code` first, then `kanban login --code <CODE>`.");
+  if (pending.site !== siteUrl.origin) {
+    throw new Error(`The pending sign-in was started for ${pending.site}, not ${siteUrl.origin}. Run \`kanban login --code\` again.`);
+  }
+  if (pending.expiresAt <= now()) {
+    await rm(pendingFile, { force: true });
+    throw new Error("The pending sign-in has expired. Run `kanban login --code` to start again.");
+  }
+  const redeem = options.redeem ?? convexRedeemer(siteUrl.origin);
+  let result: unknown;
+  try {
+    result = await redeem({ code: normalized, verifier: pending.verifier });
+  } catch (error) {
+    if (isInvalidOrExpired(error)) {
+      throw new Error("That code is invalid or expired. Check it and run `kanban login --code <CODE>` again, or start over with `kanban login --code`.");
+    }
+    throw error;
+  }
+  await saveToken(tokenFrom(result), siteUrl.origin, options.file);
+  await rm(pendingFile, { force: true });
+  log(SIGNED_IN_MESSAGE);
 }

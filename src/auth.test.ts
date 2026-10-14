@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, test } from "node:test";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { browserLogin, challengeFor, codeLogin, createVerifier, detectLoginMode, hasLocalDisplay, normalizeCode, readAuth, selectLoginMode } from "./auth.js";
+import { browserLogin, challengeFor, codeLogin, createVerifier, detectLoginMode, finishCodeLogin, hasLocalDisplay, normalizeCode, readAuth, selectLoginMode } from "./auth.js";
 
 const tempDirs: string[] = [];
 afterEach(async () => {
@@ -239,30 +239,74 @@ test("code login does not retry other errors or a bad response", async () => {
   assert.equal(await readAuth(file), null);
 });
 
-test("code login without a TTY fails before prompting", async () => {
+test("code login without a TTY saves a pending sign-in and prints the follow-up command", async () => {
   const file = await tempAuthFile();
-  const h = codeHarness(["KJ7Q-M2XP"], async () => ({ token: TOKEN }));
-  await assert.rejects(codeLogin("https://kanban.example", { ...h.options, isTTY: false, file }), /interactive terminal/);
+  const pendingFile = join(file, "..", "pending-login.json");
+  const h = codeHarness([], async () => ({ token: TOKEN }));
+  await codeLogin("https://kanban.example", { ...h.options, isTTY: false, file, pendingFile, now: () => 1_000 });
   assert.equal(h.prompts.length, 0);
   assert.equal(h.calls.length, 0);
-  assert.deepEqual(h.opened, []);
-  await assert.rejects(codeLogin("http://kanban.example", { ...h.options, file }), /requires HTTPS/);
+  const output = h.lines.join("\n");
+  const url = /^https:\/\/kanban\.example\/cli\/login\?\S+$/m.exec(output)?.[0];
+  assert.ok(url, output);
+  assert.match(output, /kanban login --code <CODE>/);
+  const pending = JSON.parse(await readFile(pendingFile, "utf8")) as { site: string; verifier: string; expiresAt: number };
+  assert.equal(pending.site, "https://kanban.example");
+  assert.equal(pending.expiresAt, 1_000 + 5 * 60_000);
+  assert.equal(new URL(url).searchParams.get("challenge"), challengeFor(pending.verifier));
+  assert.ok(!output.includes(pending.verifier), "the verifier never leaves this machine");
+  assert.equal((await stat(pendingFile)).mode & 0o777, 0o600);
+  assert.equal(await readAuth(file), null);
+  await assert.rejects(codeLogin("http://kanban.example", { ...h.options, isTTY: false, file, pendingFile }), /requires HTTPS/);
 });
 
-test("kanban login --code with piped stdin exits with a clear message", async () => {
+test("finishing a pending sign-in redeems the code with its verifier, once", async () => {
+  const file = await tempAuthFile();
+  const pendingFile = join(file, "..", "pending-login.json");
+  const h = codeHarness([], async () => ({ token: TOKEN }));
+  await codeLogin("https://kanban.example", { ...h.options, isTTY: false, file, pendingFile, now: () => 1_000 });
+  const { verifier } = JSON.parse(await readFile(pendingFile, "utf8")) as { verifier: string };
+  await finishCodeLogin("https://kanban.example", " kj7q-m2xp ", { ...h.options, file, pendingFile, now: () => 2_000 });
+  assert.deepEqual(h.calls, [{ code: "KJ7QM2XP", verifier }]);
+  assert.deepEqual(await readAuth(file), { token: TOKEN, site: "https://kanban.example" });
+  await assert.rejects(stat(pendingFile), /ENOENT/);
+  assert.match(h.lines.join("\n"), /Signed in\./);
+});
+
+test("finishing keeps the pending sign-in after an invalid code, and refuses missing, expired or other-site ones", async () => {
+  const file = await tempAuthFile();
+  const pendingFile = join(file, "..", "pending-login.json");
+  const bad = codeHarness([], async () => { throw new Error("This sign-in code is invalid or expired."); });
+  await assert.rejects(finishCodeLogin("https://kanban.example", "AAAA-AAAA", { ...bad.options, file, pendingFile }), /No pending sign-in.*kanban login --code/);
+  await codeLogin("https://kanban.example", { ...bad.options, isTTY: false, file, pendingFile, now: () => 1_000 });
+  await assert.rejects(finishCodeLogin("https://kanban.example", "AAAA-AAAA", { ...bad.options, file, pendingFile, now: () => 2_000 }), /invalid or expired/);
+  await stat(pendingFile);
+  await assert.rejects(finishCodeLogin("https://other.example", "AAAA-AAAA", { ...bad.options, file, pendingFile, now: () => 2_000 }), /was started for https:\/\/kanban\.example/);
+  await assert.rejects(finishCodeLogin("https://kanban.example", "AAAA-AAAA", { ...bad.options, file, pendingFile, now: () => 1_000 + 5 * 60_000 + 1 }), /expired.*kanban login --code/);
+  await assert.rejects(stat(pendingFile), /ENOENT/);
+  await assert.rejects(finishCodeLogin("https://kanban.example", "", { ...bad.options, file, pendingFile }), /code/);
+  assert.equal(await readAuth(file), null);
+});
+
+test("kanban login --code works without a terminal in two steps", async () => {
   const home = await mkdtemp(join(tmpdir(), "kanban-cli-home-"));
   tempDirs.push(home);
   const kanban = new URL("./kanban.js", import.meta.url).pathname;
+  const env = { ...process.env, HOME: home, KANBAN_NO_UPDATE_CHECK: "1" };
   for (const flag of ["--code", "--no-browser"]) {
-    const run = spawnSync(process.execPath, [kanban, "login", flag], { encoding: "utf8", input: "", env: { ...process.env, HOME: home, KANBAN_NO_UPDATE_CHECK: "1" } });
-    assert.equal(run.status, 1, run.stderr);
-    assert.match(run.stderr, /interactive terminal/);
-    assert.doesNotMatch(run.stdout, /cli\/login/);
+    const run = spawnSync(process.execPath, [kanban, "login", flag], { encoding: "utf8", input: "", env });
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stdout, /cli\/login\?mode=code/);
+    assert.match(run.stdout, /kanban login --code <CODE>/);
+    await stat(join(home, ".config", "kanban", "pending-login.json"));
   }
-  const both = spawnSync(process.execPath, [kanban, "login", "--code", "--browser"], { encoding: "utf8", input: "", env: { ...process.env, HOME: home } });
+  const missing = spawnSync(process.execPath, [kanban, "login", "--code", "KJ7Q-M2XP"], { encoding: "utf8", input: "", env: { ...env, HOME: await mkdtemp(join(tmpdir(), "kanban-cli-home-")) } });
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, /No pending sign-in/);
+  const both = spawnSync(process.execPath, [kanban, "login", "--code", "--browser"], { encoding: "utf8", input: "", env });
   assert.equal(both.status, 2);
   assert.match(both.stderr, /either --code or --browser/);
-  const extra = spawnSync(process.execPath, [kanban, "login", "--code", "KJ7Q-M2XP"], { encoding: "utf8", input: "", env: { ...process.env, HOME: home } });
+  const extra = spawnSync(process.execPath, [kanban, "login", "--browser", "KJ7Q-M2XP"], { encoding: "utf8", input: "", env });
   assert.equal(extra.status, 2);
-  assert.match(extra.stderr, /type the code when asked/);
 });
+

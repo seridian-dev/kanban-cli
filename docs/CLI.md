@@ -28,6 +28,18 @@ Plain `kanban login` chooses the code flow when `SSH_CONNECTION` or `SSH_TTY` is
 
 The URL carries only a challenge: the SHA-256 hash of a random verifier that stays on your machine. The code alone cannot be redeemed without that verifier.
 
+### Without an interactive terminal
+
+When `kanban login --code` cannot prompt (a script, piped input, or a command an agent runs for you), it prints the
+link and keeps its secret verifier in `~/.config/kanban/pending-login.json` (owner-only, valid 5 minutes). Open the
+link on any device, choose **Authorize CLI**, then finish with the code the page shows:
+
+```sh
+kanban login --code KJ7Q-M2XP
+```
+
+An invalid code keeps the pending sign-in so you can retry until it expires.
+
 ## First use
 
 ```sh
