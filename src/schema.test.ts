@@ -64,10 +64,11 @@ test("destructive commands are exactly the ones that delete or invalidate data",
   assert.equal(rm?.flags.find((f) => f.name === "yes")?.required, true);
 });
 
-test("--purge is marked destructive: it destroys a banished card forever", () => {
+test("--purge is refused, so it is not a destructive flag", () => {
   const purge = findCommand(["items", "rm"])?.flags.find((f) => f.name === "purge");
   assert.equal(purge?.type, "boolean");
-  assert.equal(purge?.destructive, true);
+  assert.notEqual(purge?.destructive, true);
+  assert.match(purge?.description ?? "", /can't be destroyed/);
   assert.equal(findCommand(["items", "rm"])?.flags.find((f) => f.name === "yes")?.destructive, undefined);
 });
 

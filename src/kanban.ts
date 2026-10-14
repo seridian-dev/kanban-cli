@@ -681,24 +681,9 @@ async function runMain(argv: string[], deps: CliDeps) {
         return out({ key: key.toUpperCase(), status: flags.status }, `Moved ${key.toUpperCase()} to ${flags.status}`);
       }
       if (sub === "rm") {
-        // KAN-257: rm banishes to the Shadow Realm (restorable). --purge destroys a banished card forever.
+        // KAN-257: rm banishes to the Shadow Realm (restorable). Cards are never destroyed, so --purge is refused.
         const key = need(arg, "item key").toUpperCase();
-        if (flags.purge === true) {
-          // Checked before any lookup, so a missing --yes never reaches the server.
-          if (flags.yes !== true) throw usage(`Refusing to destroy ${key} forever without --yes. This cannot be undone`);
-          const item = await anyIdOf(key);
-          if (item.deletedAt === undefined) throw usage(`${key} is not in the Shadow Realm. Banish it first: kanban items rm ${key} --yes`);
-          if (dryRun) return dryRunOut([{ action: "items.purge", project: projectOfKey(key), keys: [key] }]);
-          let r: { destroyed: number };
-          try {
-            r = await client.mutation(api.workItems.destroyForever, { id: item._id, actor });
-          } catch (e) {
-            const message = cleanServerError(e);
-            if (/owner or admin/i.test(message)) throw new CliError(`${message}. Ask a workspace owner or admin to run it.`, 1);
-            throw e;
-          }
-          return out(r, `Destroyed ${key} forever`);
-        }
+        if (flags.purge === true) throw usage(`Cards in the Shadow Realm can't be destroyed. Use \`kanban items restore ${key}\` to bring one back.`);
         if (flags.yes !== true) {
           const rows = await client.query(api.agentApi.search, { projectKey: projectOfKey(key), epicKey: key, workspaceSlug: await workspaceForProject(projectOfKey(key)) });
           throw usage(`Refusing to banish ${key} and its subtree (${rows.length} item(s)) without --yes`);

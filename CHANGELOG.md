@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Cards in the Shadow Realm can no longer be destroyed. `kanban items rm KEY --purge` now exits 2 with "Cards in the Shadow Realm can't be destroyed. Use `kanban items restore KEY` to bring one back." and sends nothing, with or without `--yes` or `--dry-run`. The purge path and its `workItems.destroyForever` call were removed from the CLI.
+- `kanban schema` no longer marks `--purge` as destructive; it is listed as refused.
+
 ## 0.3.2
 
 - Fix: regenerate package-lock.json with npm 11 (the version the publish runner uses) so `npm ci` includes every platform's esbuild package. 0.3.0 and 0.3.1 could not publish.

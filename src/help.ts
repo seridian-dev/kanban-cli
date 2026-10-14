@@ -18,7 +18,6 @@ GITHUB    kanban gh sync --dry-run → kanban gh sync (issues mirror cards; Kanb
 DRY RUN   Agents: add --dry-run to any write (items create/update/move/rm/restore/breakdown/distribute/bulk, comment add, sprints, projects create/update/move, folders create/rename/delete, gh pr, git connect/rotate-secret)
           before running it, especially deletes: kanban items rm WEB-12 --yes --dry-run. Read wouldChange, then run the real command.
 SHADOW   kanban items rm WEB-12 --yes banishes (restorable) · kanban items restore WEB-12 · kanban shadow-realm list
-          kanban items rm WEB-12 --purge --yes destroys a banished card forever (owners and admins). Never use --purge unless asked.
 
 Project lookup: --project > KANBAN_PROJECT > nearest linked folder > saved default > account CLI default.
 Workspace lookup: --workspace > KANBAN_WORKSPACE > nearest linked folder > saved default > account CLI default.
@@ -29,7 +28,7 @@ Writes are validated by the server. Local settings live in ~/.config/kanban/conf
 Use --compact --limit N --json to keep large boards out of the context window.
 Login opens Kanban in your browser and asks you to approve this device. Over SSH or without a display it prints a URL
 and asks for a one-time code instead (--code forces this, --browser forces the browser). Login needs the user's terminal.
-Run 'kanban help' for the full reference. Never use --yes to banish or --purge to destroy unless requested.
+Run 'kanban help' for the full reference. Never use --yes to banish unless requested. Cards in the Shadow Realm are never destroyed.
 SCHEMA   kanban schema → JSON of every command, flag, type, enum, and destructive action. Use it instead of parsing help.
 `;
 
@@ -95,7 +94,6 @@ WRITE
   kanban items bulk --ids WEB-1,WEB-2 [--status --assignee --priority --sprint NAME]
   kanban items rm WEB-12 --yes                      banishes the whole subtree to the Shadow Realm (restorable); --yes is mandatory
   kanban items restore WEB-12                       summons a banished card (and cards banished with it) back
-  kanban items rm WEB-12 --purge --yes              destroys a banished card and its subtree forever (owners/admins)
   kanban shadow-realm list [--workspace acme --project WEB]   banished cards with who and when
   kanban comment add WEB-12 --body "..."
   kanban hooks install · kanban hooks set-item KEY · kanban hooks doctor
