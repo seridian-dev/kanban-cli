@@ -13,7 +13,8 @@ const isDirectBackend = (candidate: string): boolean => {
   } catch { return false; }
 };
 
-export async function resolveBackendUrl(productUrl: string): Promise<string> {
+/** `fetcher` is the CLI's HTTP helper (http.ts); the default is the plain global fetch. */
+export async function resolveBackendUrl(productUrl: string, fetcher: typeof fetch = fetch): Promise<string> {
   const candidate = productUrl.trim().replace(/\/$/, "");
   if (isDirectBackend(candidate)) return candidate;
 
@@ -24,9 +25,7 @@ export async function resolveBackendUrl(productUrl: string): Promise<string> {
     throw new Error("Kanban product URL must use HTTPS");
   }
 
-  let response: Response;
-  try { response = await fetch(new URL("/api/cli/config", site)); }
-  catch { throw new Error(`Could not reach ${site.origin}/api/cli/config`); }
+  const response = await fetcher(new URL("/api/cli/config", site));
   if (!response.ok) throw new Error(`Kanban backend discovery failed (${response.status})`);
   const data: unknown = await response.json();
   const url = typeof data === "object" && data !== null && "convexUrl" in data

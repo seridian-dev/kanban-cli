@@ -24,6 +24,7 @@ Workspace lookup: --workspace > KANBAN_WORKSPACE > nearest linked folder > saved
 Use 'kanban defaults' to show effective defaults and their source; set account defaults in Kanban → Settings → CLI defaults.
 The CLI checks npm for updates at most daily; run 'kanban update check' to check now or set KANBAN_NO_UPDATE_CHECK=1 to disable.
 Use 'kanban config' for saved site/user/workspace/project settings and 'kanban links list' for links.
+Reads retry on network and server errors (KANBAN_RETRIES, default 4). Add --no-retry, or set KANBAN_RETRIES=0, to make one attempt.
 Writes are validated by the server. Local settings live in ~/.config/kanban/config.json.
 Use --compact --limit N --json to keep large boards out of the context window.
 Login opens Kanban in your browser and asks you to approve this device. Over SSH or without a display it prints a URL

@@ -25,6 +25,7 @@ import { resolve } from "node:path";
 import { classifyError, compactItems, describeDryRun, dryRunPayload, flagFields, formatTable, formatTree, parseArgs, parseKey, parseProjectUpdate, pickSprint, readAll, splitList, UsageError, type Parsed, type WouldChange } from "./lib.js";
 import { findCommand, schemaDocument } from "./schema.js";
 import { readRetriesFromEnv, wrapClient } from "./retry.js";
+import { createHttpFetch, type HttpPolicy, TransportError } from "./http.js";
 
 class CliError extends Error {
   constructor(message: string, readonly code: 1 | 2 | 3 = 1) {
@@ -51,17 +52,19 @@ export interface CliDeps {
   client?: CliConvexClient;
   /** Test seam: replaces the retry backoff wait so tests run without delays. */
   sleep?: (ms: number) => Promise<void>;
+  /** Test seam: replaces the transport under the HTTP helper, so no network is used. */
+  fetch?: typeof fetch;
 }
 
 export async function main(argv: string[], deps: CliDeps = {}) {
   await runMain(argv, deps);
 }
 
-async function createClient(endpoint: string, token: string | undefined): Promise<CliConvexClient> {
+async function createClient(endpoint: string, token: string | undefined, policy: HttpPolicy): Promise<CliConvexClient> {
   let url: string;
-  try { url = await resolveBackendUrl(endpoint); }
-  catch (error) { throw new CliError(error instanceof Error ? error.message : String(error)); }
-  const client = new ConvexHttpClient(url);
+  try { url = await resolveBackendUrl(endpoint, createHttpFetch(policy)); }
+  catch (error) { throw error instanceof TransportError ? error : new CliError(error instanceof Error ? error.message : String(error)); }
+  const client = new ConvexHttpClient(url, { fetch: createHttpFetch(policy) });
   if (token) client.setAuth(token);
   return client as unknown as CliConvexClient;
 }
@@ -196,9 +199,10 @@ async function runMain(argv: string[], deps: CliDeps) {
     return;
   }
 
-  // Reads retry on transient failures (KANBAN_RETRIES, default 2); writes are attempted once.
-  const retries = readRetriesFromEnv(process.env);
-  const client = wrapClient(deps.client ?? await createClient(localSite, auth?.token), { retries, sleep: deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms))), random: Math.random });
+  // Reads retry on transient failures (KANBAN_RETRIES, default 4; --no-retry means 0). Writes are attempted once.
+  const retries = flags["no-retry"] === true ? 0 : readRetriesFromEnv(process.env);
+  const policy: HttpPolicy = { retries, probeUrl: localSite, transport: deps.fetch, sleep: deps.sleep, random: Math.random };
+  const client = wrapClient(deps.client ?? await createClient(localSite, auth?.token, policy));
   const actor = str(flags.as) ?? process.env.KANBAN_USER ?? config.user ?? "cli";
   // --dry-run: validation and key resolution run as usual; the write is reported instead of sent.
   const dryRun = flags["dry-run"] === true;
@@ -825,11 +829,11 @@ if (isEntrypoint) main(process.argv.slice(2)).then(async () => {
   }
 }).catch((e) => {
   const json = process.argv.includes("--json");
-  let message = e instanceof CliError || e instanceof UsageError ? e.message : cleanServerError(e);
+  let message = e instanceof CliError || e instanceof UsageError || e instanceof TransportError ? e.message : cleanServerError(e);
   if (/unauthenticated|not authenticated|invalid auth token|invalid jwt/i.test(message)) {
     message += "\nSign in or refresh this device with `kanban login`, then retry.";
   }
-  const code = e instanceof CliError ? e.code : e instanceof UsageError ? 2 : classifyError(message);
+  const code = e instanceof CliError ? e.code : e instanceof UsageError ? 2 : e instanceof TransportError ? e.exitCode : classifyError(message);
   if (json) console.error(JSON.stringify({ error: message, code }));
   else console.error(`error: ${message}`);
   process.exit(code);

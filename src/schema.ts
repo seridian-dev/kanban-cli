@@ -49,6 +49,7 @@ const keyArg: ArgSpec = { name: "key", required: true, description: "Item key su
 const HELP_FLAG = bool("help", "Print the full human-readable help and exit.");
 const JSON_FLAG = bool("json", "Print machine-readable JSON.");
 const DRY_RUN_FLAG = bool("dry-run", "Print the planned changes without sending them.");
+const NO_RETRY_FLAG = bool("no-retry", "Make one attempt, with no retries. Same as KANBAN_RETRIES=0.");
 
 const SPECS: CommandSpec[] = [
   {
@@ -299,6 +300,7 @@ function withCommonFlags(spec: CommandSpec): CommandSpec {
   const flags = [...spec.flags];
   if (spec.json && !flags.some((f) => f.name === "json")) flags.push(JSON_FLAG);
   if (WRITE_COMMANDS.has(spec.command) && !flags.some((f) => f.name === "dry-run")) flags.push(DRY_RUN_FLAG);
+  if (!flags.some((f) => f.name === "no-retry")) flags.push(NO_RETRY_FLAG);
   if (!flags.some((f) => f.name === "help")) flags.push(HELP_FLAG);
   return { ...spec, flags };
 }
