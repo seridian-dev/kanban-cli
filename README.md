@@ -33,7 +33,7 @@ kanban items get WEB-12
 
 Rename a project or change its description with `kanban projects update WEB --name "Web app" --description "Customer site"`. The key stays the same. Only owners and admins can do this; add `--workspace SLUG` if the key exists in more than one workspace.
 
-Deleting is a two-step Shadow Realm flow. `kanban items rm WEB-12 --yes` banishes a card and its subtree (restorable with `kanban items restore WEB-12`), and `kanban shadow-realm list` shows what is banished. `kanban items rm WEB-12 --purge --yes` destroys a banished card forever; only workspace owners and admins can do that.
+Deleting is a two-step Shadow Realm flow. `kanban items rm WEB-12 --yes` banishes a card and its subtree (restorable with `kanban items restore WEB-12`), and `kanban shadow-realm list` shows what is banished. Cards in the Shadow Realm are never destroyed: `kanban items rm WEB-12 --purge` exits 2 and points to `kanban items restore WEB-12`.
 
 Folders group projects inside a workspace: `kanban folders list` shows the tree, and `kanban projects move WEB --folder "Clients"` files a project (`--folder none` moves it to the top level). `kanban folders delete FOLDER --yes` moves that folder's projects and subfolders to the top level; it deletes nothing else.
 

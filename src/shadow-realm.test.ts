@@ -155,53 +155,31 @@ describe("items rm banishes to the Shadow Realm", () => {
   });
 });
 
-describe("items rm --purge destroys a banished card forever", () => {
-  it("calls workItems.destroyForever for a banished card and prints the result", async () => {
+describe("items rm --purge is refused: cards in the Shadow Realm can't be destroyed", () => {
+  const message = (key: string) => `Cards in the Shadow Realm can't be destroyed. Use \`kanban items restore ${key}\` to bring one back.`;
+
+  it("exits 2 with the restore hint, whether or not the card is banished, and sends nothing", async () => {
+    for (const banished of [true, false]) {
+      const { client, calls, mutations } = fakeClient({ banished });
+      const err = await failure(["items", "rm", "WEB-1", "--purge", "--yes"], client);
+      assert.equal(err.code, 2);
+      assert.equal(err.message, message("WEB-1"));
+      assert.equal(calls.length, 0, "no lookup or call");
+      assert.equal(mutations().length, 0);
+    }
+  });
+
+  it("is refused the same way without --yes, and with --dry-run or --json", async () => {
     const { client, calls } = fakeClient({ banished: true });
-    const text = await run(["items", "rm", "WEB-1", "--purge", "--yes"], client);
-    assert.equal(text, "Destroyed WEB-1 forever");
-    const mutation = calls.find((c) => c.kind === "mutation")!;
-    assert.equal(mutation.name, "workItems:destroyForever");
-    assert.equal(mutation.args.id, "id-WEB-1");
-    assert.equal(mutation.args.actor, "cli");
-  });
-
-  it("--json prints the server result", async () => {
-    const { client } = fakeClient({ banished: true });
-    assert.deepEqual(JSON.parse(await run(["items", "rm", "WEB-1", "--purge", "--yes", "--json"], client)), { destroyed: 3 });
-  });
-
-  it("a card that is not banished yet is refused with a clear error, and nothing is sent", async () => {
-    const { client, mutations } = fakeClient({ banished: false });
-    const err = await failure(["items", "rm", "WEB-1", "--purge", "--yes"], client);
-    assert.equal(err.code, 2);
-    assert.equal(err.message, "WEB-1 is not in the Shadow Realm. Banish it first: kanban items rm WEB-1 --yes");
-    assert.equal(mutations().length, 0);
-  });
-
-  it("without --yes it refuses before any lookup or call", async () => {
-    const { client, calls } = fakeClient({ banished: true });
-    const err = await failure(["items", "rm", "WEB-1", "--purge"], client);
-    assert.equal(err.code, 2);
-    assert.match(err.message, /Refusing to destroy WEB-1 forever without --yes\. This cannot be undone/);
+    assert.equal((await failure(["items", "rm", "WEB-1", "--purge"], client)).message, message("WEB-1"));
+    assert.equal((await failure(["items", "rm", "WEB-1", "--purge", "--yes", "--dry-run", "--json"], client)).message, message("WEB-1"));
     assert.equal(calls.length, 0);
   });
 
-  it("a non-owner or non-admin gets the server's role error with a hint, and no destroy happens", async () => {
-    const serverError = Object.assign(new Error("[Request ID: x] Uncaught ConvexError: Only a workspace owner or admin can destroy cards forever"), { data: "Only a workspace owner or admin can destroy cards forever" });
-    const { client } = fakeClient({ banished: true, mutationError: serverError });
-    const err = await failure(["items", "rm", "WEB-1", "--purge", "--yes"], client);
-    assert.equal(err.code, 1);
-    assert.match(err.message, /^Only a workspace owner or admin can destroy cards forever/);
-    assert.match(err.message, /ask a workspace owner or admin/i);
-  });
-
-  it("--dry-run reports the destroy and sends nothing", async () => {
+  it("never calls workItems.destroyForever", async () => {
     const { client, mutations } = fakeClient({ banished: true });
-    const printed = JSON.parse(await run(["items", "rm", "WEB-1", "--purge", "--yes", "--dry-run", "--json"], client));
-    assert.equal(mutations().length, 0);
-    assert.equal(printed.dryRun, true);
-    assert.deepEqual(printed.wouldChange, [{ action: "items.purge", project: "WEB", keys: ["WEB-1"] }]);
+    await failure(["items", "rm", "WEB-1", "--purge", "--yes"], client);
+    assert.equal(mutations().some((m) => m.name === "workItems:destroyForever"), false);
   });
 });
 
@@ -290,15 +268,15 @@ describe("shadow-realm list", () => {
 });
 
 describe("help and schema describe the Shadow Realm", () => {
-  it("agent-help and the full help name restore, purge, and shadow-realm list", async () => {
+  it("agent-help and the full help name restore and shadow-realm list, and never offer purge", async () => {
     const agent = await run(["agent-help"], fakeClient().client);
     assert.match(agent, /kanban items restore WEB-12/);
-    assert.match(agent, /--purge --yes/);
+    assert.doesNotMatch(agent, /--purge/);
     assert.match(agent, /shadow-realm list/);
     const full = await run(["help"], fakeClient().client);
     assert.match(full, /kanban items rm WEB-12 --yes\s+banishes/);
     assert.match(full, /kanban items restore WEB-12/);
-    assert.match(full, /kanban items rm WEB-12 --purge --yes/);
+    assert.doesNotMatch(full, /--purge/);
     assert.match(full, /kanban shadow-realm list/);
   });
 });

@@ -211,10 +211,10 @@ const SPECS: CommandSpec[] = [
     json: true, destructive: false,
   },
   {
-    command: "items rm", summary: "Banish an item and its whole subtree to the Shadow Realm (restorable). With --purge, destroy a banished item forever.", args: [keyArg],
+    command: "items rm", summary: "Banish an item and its whole subtree to the Shadow Realm (restorable). Cards are never destroyed.", args: [keyArg],
     flags: [
       bool("yes", "Required confirmation. Without it nothing is changed.", true),
-      { name: "purge", type: "boolean", required: false, destructive: true, description: "Destroy forever instead of banishing. The item must already be in the Shadow Realm; owners and admins only. Cannot be undone." },
+      { name: "purge", type: "boolean", required: false, description: "Refused (exit 2). Cards in the Shadow Realm can't be destroyed; use items restore to bring one back." },
     ],
     json: true, destructive: true,
   },

@@ -112,7 +112,7 @@ Do not claim a check passed unless you ran it. Do not mark incomplete or blocked
 - Read `kanban agent-help` and `kanban items get` before acting.
 - Use `--limit`, `--compact`, and `--json` to keep board output small and structured.
 - Use explicit `--project`/`--workspace` if the local context is unclear.
-- Never delete a card or its subtree unless the user explicitly asks. `kanban items rm` requires `--yes` and banishes the card to the Shadow Realm (restorable with `kanban items restore`). `--purge` destroys it forever and is destructive.
+- Never delete a card or its subtree unless the user explicitly asks. `kanban items rm` requires `--yes` and banishes the card to the Shadow Realm (restorable with `kanban items restore`). Cards in the Shadow Realm are never destroyed; `--purge` is refused.
 - Prefer updating or moving an existing card over creating duplicates.
 - Do not change assignee, priority, dependencies, dates, or scope unless the user or task explicitly calls for it.
 - The CLI cannot bypass Kanban's server-side hierarchy, dependency, membership, or write rules. If a write is rejected, read the error and report the actual constraint.

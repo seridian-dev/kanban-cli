@@ -97,7 +97,6 @@ kanban folders delete FOLDER --yes
 kanban shadow-realm list [--workspace SLUG] [--project KEY]
 kanban items rm WEB-12 --yes
 kanban items restore WEB-12
-kanban items rm WEB-12 --purge --yes
 kanban tree WEB
 kanban items list --project WEB [--status S --assignee A --type T --epic WEB-1 --q text --limit N --compact]
 kanban items get WEB-12
@@ -142,7 +141,7 @@ Global options `--workspace` and `--url` are not listed per command; they are se
 2. Find a small assigned card with `items list` and `--limit`.
 3. Read the card with `items get` before editing it.
 4. Move it into progress and leave a short comment as work proceeds.
-5. Ask before deleting work. `items rm` requires `--yes` and banishes the card and its children to the Shadow Realm. `items rm --purge --yes` destroys a banished card forever and is destructive; never use it unless the user asks.
+5. Ask before deleting work. `items rm` requires `--yes` and banishes the card and its children to the Shadow Realm. Cards in the Shadow Realm are never destroyed, so there is no purge: `items rm --purge` exits 2 and sends nothing.
 6. Dry-run before any destructive or bulk write (see below).
 
 ## Dry runs
@@ -167,9 +166,9 @@ Idempotency keys are not supported yet. The server API the CLI calls takes no id
 
 - `kanban items restore KEY` summons the card back to its old column and position, along with the cards banished with it. A card banished on its own stays banished when its parent is restored.
 - `kanban shadow-realm list [--workspace SLUG] [--project KEY] [--json]` lists banished cards with who banished them and when. The list needs a workspace; a card in a personal project cannot be listed here.
-- `kanban items rm KEY --purge --yes` destroys a banished card and its subtree forever. The card must already be banished, and only workspace owners and admins can destroy. Destroy is not reversible.
+- Cards in the Shadow Realm are never destroyed. `kanban items rm KEY --purge` exits 2 with a message pointing to `kanban items restore KEY`; nothing is sent.
 
-Every command accepts `--json`. `--dry-run` works on `items rm` and `items restore`: it resolves the keys, reports what would change, and sends nothing. `items rm --purge --dry-run` reports the destroy the same way.
+Every command accepts `--json`. `--dry-run` works on `items rm` and `items restore`: it resolves the keys, reports what would change, and sends nothing.
 
 ## GitHub issue sync
 
