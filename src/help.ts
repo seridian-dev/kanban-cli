@@ -22,7 +22,7 @@ SHADOW   kanban items rm WEB-12 --yes banishes (restorable) · kanban items rest
 Project lookup: --project > KANBAN_PROJECT > nearest linked folder > saved default > account CLI default.
 Workspace lookup: --workspace > KANBAN_WORKSPACE > nearest linked folder > saved default > account CLI default.
 Use 'kanban defaults' to show effective defaults and their source; set account defaults in Kanban → Settings → CLI defaults.
-The CLI checks npm for updates at most daily; run 'kanban update check' to check now or set KANBAN_NO_UPDATE_CHECK=1 to disable.
+The CLI auto-updates itself: it checks npm at most daily (2s timeout) and, when installed globally, a newer release is installed and the command re-runs with the new version. Skip with KANBAN_NO_UPDATE=1, or run 'kanban update check' to check now.
 Use 'kanban config' for saved site/user/workspace/project settings and 'kanban links list' for links.
 Reads retry on network and server errors (KANBAN_RETRIES, default 4). Add --no-retry, or set KANBAN_RETRIES=0, to make one attempt.
 Writes are validated by the server. Local settings live in ~/.config/kanban/config.json.

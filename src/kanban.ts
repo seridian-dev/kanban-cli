@@ -20,7 +20,7 @@ import { execFileSync } from "node:child_process";
 import { extractItemKeys, hooksStatus, installHooks, outgoingCommitMessages, parsePushRefs, readActiveItem, setActiveItem, validateHookItems } from "./hooks.js";
 import { readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { checkForUpdate, shouldShowUpdateNotice, updateInstallCommand } from "./update-check.js";
+import { autoUpdate, checkForUpdate, shouldShowUpdateNotice, updateInstallCommand, type AutoUpdateOutcome } from "./update-check.js";
 import { resolve } from "node:path";
 import { classifyError, compactItems, describeDryRun, dryRunPayload, flagFields, formatTable, formatTree, parseArgs, parseKey, parseProjectUpdate, pickSprint, readAll, splitList, UsageError, type Parsed, type WouldChange } from "./lib.js";
 import { findCommand, schemaDocument } from "./schema.js";
@@ -819,22 +819,35 @@ const isEntrypoint = (() => {
   catch { return false; }
 })();
 
-if (isEntrypoint) main(process.argv.slice(2)).then(async () => {
+if (isEntrypoint) void bootstrap();
+
+/** KAN-260: auto-update first (it may re-run this command with the new version), then the command itself. */
+async function bootstrap(): Promise<void> {
   const argv = process.argv.slice(2);
-  if (shouldShowUpdateNotice({ stdoutIsTTY: process.stdout.isTTY, command: argv })) {
-    try {
-      const result = await checkForUpdate();
-      if (result.updateAvailable) process.stderr.write(`Update available: ${result.current} → ${result.latest}. Run: ${updateInstallCommand()}\n`);
-    } catch { /* Update checks never affect command behavior. */ }
+  let outcome: AutoUpdateOutcome = { action: "continue" };
+  try {
+    outcome = await autoUpdate({ argv, stdoutIsTTY: process.stdout.isTTY });
+  } catch { /* An auto-update crash must never block the command. */ }
+  if (outcome.action === "rerun") {
+    process.exitCode = outcome.status;
+    return;
   }
-}).catch((e) => {
-  const json = process.argv.includes("--json");
-  let message = e instanceof CliError || e instanceof UsageError || e instanceof TransportError ? e.message : cleanServerError(e);
-  if (/unauthenticated|not authenticated|invalid auth token|invalid jwt/i.test(message)) {
-    message += "\nSign in or refresh this device with `kanban login`, then retry.";
-  }
-  const code = e instanceof CliError ? e.code : e instanceof UsageError ? 2 : e instanceof TransportError ? e.exitCode : classifyError(message);
-  if (json) console.error(JSON.stringify({ error: message, code }));
-  else console.error(`error: ${message}`);
-  process.exit(code);
-});
+  await main(argv).then(async () => {
+    if (shouldShowUpdateNotice({ stdoutIsTTY: process.stdout.isTTY, command: argv })) {
+      try {
+        const result = await checkForUpdate();
+        if (result.updateAvailable) process.stderr.write(`Update available: ${result.current} → ${result.latest}. Run: ${updateInstallCommand()}\n`);
+      } catch { /* Update checks never affect command behavior. */ }
+    }
+  }).catch((e) => {
+    const json = process.argv.includes("--json");
+    let message = e instanceof CliError || e instanceof UsageError || e instanceof TransportError ? e.message : cleanServerError(e);
+    if (/unauthenticated|not authenticated|invalid auth token|invalid jwt/i.test(message)) {
+      message += "\nSign in or refresh this device with `kanban login`, then retry.";
+    }
+    const code = e instanceof CliError ? e.code : e instanceof UsageError ? 2 : e instanceof TransportError ? e.exitCode : classifyError(message);
+    if (json) console.error(JSON.stringify({ error: message, code }));
+    else console.error(`error: ${message}`);
+    process.exit(code);
+  });
+}

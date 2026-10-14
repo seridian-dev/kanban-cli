@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The CLI now updates itself. Once per day it checks npm (2-second timeout, cached in `~/.config/kanban/update-check.json`); when a newer version is published and the CLI is installed globally, it installs the release and re-runs the original command with the new version. The check is skipped for `CI=true`, `KANBAN_NO_UPDATE=1`, `--json` without a terminal, and npx runs; any failure prints one hint and the command continues.
 - Cards in the Shadow Realm can no longer be destroyed. `kanban items rm KEY --purge` now exits 2 with "Cards in the Shadow Realm can't be destroyed. Use `kanban items restore KEY` to bring one back." and sends nothing, with or without `--yes` or `--dry-run`. The purge path and its `workItems.destroyForever` call were removed from the CLI.
 - `kanban schema` no longer marks `--purge` as destructive; it is listed as refused.
 
