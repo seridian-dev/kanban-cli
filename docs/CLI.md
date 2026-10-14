@@ -14,6 +14,20 @@ kanban agent-help
 
 Your browser opens. Sign in to Kanban and choose **Authorize CLI**. After approval, the browser tab tries to close itself; if the browser keeps it open, it says you can close it. Return to your terminal. The CLI token is saved under `~/.config/kanban/auth.json` with owner-only file and directory permissions. It expires after three days; run `kanban login` again to reconnect. `kanban logout` removes the token from this computer.
 
+### Sign in from another device
+
+The browser flow returns the token to a local callback on `127.0.0.1`, so it only works when the browser runs on the same machine as the CLI. Over SSH or on a headless machine, use the one-time code flow:
+
+```sh
+kanban login --code        # --no-browser is an alias
+```
+
+The CLI prints a URL. Open it on any device, sign in, and choose **Authorize CLI**. The page shows a code such as `KJ7Q-M2XP`; type it at the `Code:` prompt (case, spaces, and dashes do not matter). A code works once and expires after five minutes. A wrong or expired code can be retyped up to three times. The token is saved to the same file, with the same permissions, as the browser flow. The prompt needs an interactive terminal; with piped or redirected input the command exits with an error.
+
+Plain `kanban login` chooses the code flow when `SSH_CONNECTION` or `SSH_TTY` is set, or on Linux when neither `DISPLAY` nor `WAYLAND_DISPLAY` is set. Otherwise it opens the browser. `kanban login --browser` forces the browser flow. The code flow still opens a local browser when a display is available, but never requires one.
+
+The URL carries only a challenge: the SHA-256 hash of a random verifier that stays on your machine. The code alone cannot be redeemed without that verifier.
+
 ## First use
 
 ```sh

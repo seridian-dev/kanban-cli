@@ -18,6 +18,8 @@ kanban agent-help
 
 Your browser opens. Sign in to Kanban and select **Authorize CLI**. Return to your terminal when it says you’re signed in.
 
+Signing in over SSH, or on a machine without a browser? Run `kanban login --code` (or `--no-browser`). The CLI prints a URL; open it on any device, sign in, and select **Authorize CLI**. The page shows a one-time code such as `KJ7Q-M2XP`; type it at the `Code:` prompt. The code works once and expires after five minutes. Plain `kanban login` picks this mode on its own over SSH and on Linux without a display; `kanban login --browser` forces the browser flow.
+
 The CLI token is saved under `~/.config/kanban/auth.json` with owner-only file and directory permissions. It expires after three days; run `kanban login` again to reconnect. `kanban logout` removes the token from this computer.
 
 ## Try it
