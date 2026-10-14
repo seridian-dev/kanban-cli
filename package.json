@@ -1,6 +1,6 @@
 {
   "name": "@seridian/kanban-cli",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "CLI for Kanban project planning, work items, sprints, and agent workflows.",
   "license": "MIT",
   "type": "module",
