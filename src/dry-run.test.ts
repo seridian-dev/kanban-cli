@@ -167,7 +167,7 @@ describe("--dry-run keeps usage errors identical", () => {
   it("items rm WEB-1 --dry-run without --yes refuses, as the real run does", async () => {
     const { client, mutations } = fakeClient();
     const message = await outcome(["items", "rm", "WEB-1", "--dry-run"], client);
-    assert.match(message, /^CliError: Refusing to delete WEB-1 .* without --yes$|^UsageError: Refusing/);
+    assert.match(message, /^CliError: Refusing to banish WEB-1 .* without --yes$/);
     assert.equal(mutations.length, 0);
   });
 });
