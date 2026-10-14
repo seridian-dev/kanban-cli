@@ -19,6 +19,8 @@ export interface FlagSpec {
   required: boolean;
   description: string;
   values?: readonly string[];
+  /** Set on a flag that deletes or irreversibly invalidates data (for example --purge). */
+  destructive?: boolean;
 }
 
 export interface CommandSpec {
@@ -209,9 +211,20 @@ const SPECS: CommandSpec[] = [
     json: true, destructive: false,
   },
   {
-    command: "items rm", summary: "Delete an item and its whole subtree.", args: [keyArg],
-    flags: [bool("yes", "Required confirmation. Without it nothing is deleted.", true)],
+    command: "items rm", summary: "Banish an item and its whole subtree to the Shadow Realm (restorable). With --purge, destroy a banished item forever.", args: [keyArg],
+    flags: [
+      bool("yes", "Required confirmation. Without it nothing is changed.", true),
+      { name: "purge", type: "boolean", required: false, destructive: true, description: "Destroy forever instead of banishing. The item must already be in the Shadow Realm; owners and admins only. Cannot be undone." },
+    ],
     json: true, destructive: true,
+  },
+  {
+    command: "items restore", summary: "Summon a banished item back from the Shadow Realm, with the items banished along with it.", args: [keyArg],
+    flags: [], json: true, destructive: false,
+  },
+  {
+    command: "shadow-realm list", summary: "List banished items in a workspace, with who banished them and when.", args: [],
+    flags: [str("workspace", "Workspace slug. Defaults to the selected workspace."), projectFlag], json: true, destructive: false,
   },
   {
     command: "items breakdown", summary: "Create child items from lines of text (epic to stories, others to subtasks).", args: [keyArg],
@@ -277,7 +290,7 @@ const SPECS: CommandSpec[] = [
 
 /** Commands that change data on the board, GitHub, or git. Each accepts --dry-run (gh sync declares its own). */
 const WRITE_COMMANDS: ReadonlySet<string> = new Set([
-  "projects create", "projects update", "projects move", "folders create", "folders rename", "folders delete", "items create", "items update", "items move", "items rm", "items breakdown", "items distribute", "items bulk",
+  "projects create", "projects update", "projects move", "folders create", "folders rename", "folders delete", "items create", "items update", "items move", "items rm", "items restore", "items breakdown", "items distribute", "items bulk",
   "comment add", "sprints create", "sprints start", "sprints complete", "git connect", "git rotate-secret", "gh pr",
 ]);
 

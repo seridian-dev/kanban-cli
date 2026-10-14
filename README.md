@@ -33,6 +33,8 @@ kanban items get WEB-12
 
 Rename a project or change its description with `kanban projects update WEB --name "Web app" --description "Customer site"`. The key stays the same. Only owners and admins can do this; add `--workspace SLUG` if the key exists in more than one workspace.
 
+Deleting is a two-step Shadow Realm flow. `kanban items rm WEB-12 --yes` banishes a card and its subtree (restorable with `kanban items restore WEB-12`), and `kanban shadow-realm list` shows what is banished. `kanban items rm WEB-12 --purge --yes` destroys a banished card forever; only workspace owners and admins can do that.
+
 Folders group projects inside a workspace: `kanban folders list` shows the tree, and `kanban projects move WEB --folder "Clients"` files a project (`--folder none` moves it to the top level). `kanban folders delete FOLDER --yes` moves that folder's projects and subfolders to the top level; it deletes nothing else.
 
 Replace `WEB` and `WEB-12` with your own project and item keys. To see the short guide for coding agents, run:
@@ -87,5 +89,7 @@ git commit -am "chore: release X.Y.Z" && git push   # via a PR to main
 git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z
 ```
 
-The `Publish to npm` workflow checks the tag matches `package.json`, runs the tests, publishes with provenance, and creates the GitHub release. To publish an existing tag, run it manually (Actions → Publish to npm → Run workflow).
+The `Publish to npm` workflow (`.github/workflows/publish.yml`) checks the tag matches `package.json`, runs the tests, publishes with provenance, and creates the GitHub release. To publish an existing tag, run it manually (Actions → Publish to npm → Run workflow).
+
+One-time setup, done on npmjs.com: open the package's settings, add a Trusted Publisher for GitHub Actions with organization `seridian-dev`, repository `kanban-cli`, and workflow filename `publish.yml`. The publish job needs npm 11.5.1 or later, which the workflow's Node 24 setup provides.
 

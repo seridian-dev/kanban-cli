@@ -274,6 +274,13 @@ async function runMain(argv: string[], deps: CliDeps) {
     return item._id;
   };
   const idsOf = async (keys: string[]) => Promise.all(keys.map(idOf));
+  /** Resolves a key whether or not the card is banished (KAN-257), for restore and purge. */
+  const anyIdOf = async (key: string) => {
+    if (!parseKey(key)) throw usage(`"${key}" is not an item key like WEB-12`);
+    const item = await client.query(api.agentApi.getByKey, { key, workspaceSlug: await workspaceForProject(parseKey(key)!.project), includeBanished: true });
+    if (!item) throw new CliError(`Item ${key.toUpperCase()} not found`, 3);
+    return item;
+  };
 
   const sprintOf = async (ref: string, projectKey: string): Promise<Id<"sprints">> => {
     const p = await client.query(api.projects.getByKey, { key: projectKey, workspaceSlug: await workspaceForProject(projectKey) });
@@ -548,6 +555,26 @@ async function runMain(argv: string[], deps: CliDeps) {
       return out({ repo, project: pk, dryRun, ...report, plan: dryRun ? lines : undefined }, `${pk} ⇄ ${repo}\n${formatReport(report, dryRun)}`);
     }
 
+    case "shadow-realm": {
+      // KAN-257: banished cards in a workspace. Read-only; the server checks the viewer can see each project.
+      if (sub !== "list") throw usage("Use `kanban shadow-realm list [--workspace SLUG] [--project KEY]`");
+      const projectKey = str(flags.project)?.toUpperCase();
+      const slug = str(flags.workspace)?.toLowerCase() ?? (projectKey ? await workspaceForProject(projectKey) : await workspaceSlug());
+      const workspace = await workspaceFor(slug);
+      if (!workspace) throw usage("The Shadow Realm lives in a workspace. Pass --workspace SLUG, or set a default with `kanban config set workspace SLUG`.");
+      let projectId: Id<"projects"> | undefined;
+      if (projectKey) {
+        const p = await client.query(api.projects.getByKey, { key: projectKey, workspaceSlug: slug });
+        if (!p) throw new CliError(`Project ${projectKey} not found`, 3);
+        projectId = p._id;
+      }
+      const realm = await client.query(api.shadowRealm.list, { organizationId: workspace.id, ...(projectId ? { projectId } : {}) });
+      const rows: { key: string; type: string; status: string; title: string; deletedBy: string; deletedAt: number }[] = realm.banished;
+      const human = rows.length
+        ? formatTable(["KEY", "TYPE", "STATUS", "TITLE", "BANISHED BY", "WHEN"], rows.map((r) => [r.key, r.type, r.status, r.title, r.deletedBy, new Date(r.deletedAt).toISOString().slice(0, 10)]))
+        : "The Shadow Realm is empty.";
+      return out(realm, human);
+    }
     case "tree": {
       const key = (sub ?? await project()).toUpperCase();
       const rows = await client.query(api.agentApi.tree, { projectKey: key, workspaceSlug: await workspaceForProject(key) });
@@ -654,19 +681,45 @@ async function runMain(argv: string[], deps: CliDeps) {
         return out({ key: key.toUpperCase(), status: flags.status }, `Moved ${key.toUpperCase()} to ${flags.status}`);
       }
       if (sub === "rm") {
-        const key = need(arg, "item key");
-        const id = await idOf(key);
+        // KAN-257: rm banishes to the Shadow Realm (restorable). --purge destroys a banished card forever.
+        const key = need(arg, "item key").toUpperCase();
+        if (flags.purge === true) {
+          // Checked before any lookup, so a missing --yes never reaches the server.
+          if (flags.yes !== true) throw usage(`Refusing to destroy ${key} forever without --yes. This cannot be undone`);
+          const item = await anyIdOf(key);
+          if (item.deletedAt === undefined) throw usage(`${key} is not in the Shadow Realm. Banish it first: kanban items rm ${key} --yes`);
+          if (dryRun) return dryRunOut([{ action: "items.purge", project: projectOfKey(key), keys: [key] }]);
+          let r: { destroyed: number };
+          try {
+            r = await client.mutation(api.workItems.destroyForever, { id: item._id, actor });
+          } catch (e) {
+            const message = cleanServerError(e);
+            if (/owner or admin/i.test(message)) throw new CliError(`${message}. Ask a workspace owner or admin to run it.`, 1);
+            throw e;
+          }
+          return out(r, `Destroyed ${key} forever`);
+        }
         if (flags.yes !== true) {
           const rows = await client.query(api.agentApi.search, { projectKey: projectOfKey(key), epicKey: key, workspaceSlug: await workspaceForProject(projectOfKey(key)) });
-          throw usage(`Refusing to delete ${key.toUpperCase()} and its subtree (${rows.length} item(s)) without --yes`);
+          throw usage(`Refusing to banish ${key} and its subtree (${rows.length} item(s)) without --yes`);
         }
+        const item = await anyIdOf(key);
+        if (item.deletedAt !== undefined) throw usage(`${key} is already in the Shadow Realm. Summon it back with: kanban items restore ${key}`);
         if (dryRun) {
           const rows = await client.query(api.agentApi.search, { projectKey: projectOfKey(key), epicKey: key, workspaceSlug: await workspaceForProject(projectOfKey(key)) });
-          const subtree = [...new Set([key.toUpperCase(), ...rows.map((row: { key: string }) => row.key)])];
+          const subtree = [...new Set([key, ...rows.map((row: { key: string }) => row.key)])];
           return dryRunOut([{ action: "items.rm", project: projectOfKey(key), keys: subtree }]);
         }
-        const r = await client.mutation(api.workItems.remove, { id, actor });
-        return out(r, `Deleted ${r.deleted} item(s)`);
+        const r = await client.mutation(api.workItems.banish, { id: item._id, actor });
+        return out(r, `Banished ${key} to the Shadow Realm (restore with: kanban items restore ${key})`);
+      }
+      if (sub === "restore") {
+        const key = need(arg, "item key").toUpperCase();
+        const item = await anyIdOf(key);
+        if (item.deletedAt === undefined) throw usage(`${key} is not in the Shadow Realm, so there is nothing to restore`);
+        if (dryRun) return dryRunOut([{ action: "items.restore", project: projectOfKey(key), keys: [key] }]);
+        const r = await client.mutation(api.workItems.restore, { id: item._id, actor });
+        return out(r, `Summoned ${key} back from the Shadow Realm`);
       }
       if (sub === "breakdown") {
         const key = need(arg, "item key");

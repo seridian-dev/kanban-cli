@@ -9,7 +9,7 @@ import { COMMANDS, booleanFlagNames, findCommand, schemaDocument, schemaVersion 
 const KANBAN = new URL("./kanban.js", import.meta.url).pathname;
 
 /** Groups whose second word is a subcommand (`kanban items get`), not an argument. */
-const GROUPS_WITH_SUBCOMMANDS = new Set(["auth", "projects", "folders", "items", "comment", "sprints", "git", "gh", "links", "hooks", "config", "update"]);
+const GROUPS_WITH_SUBCOMMANDS = new Set(["auth", "projects", "folders", "items", "comment", "sprints", "git", "gh", "links", "hooks", "config", "update", "shadow-realm"]);
 
 function helpCommandKeys(help: string): Set<string> {
   const keys = new Set<string>();
@@ -62,6 +62,22 @@ test("destructive commands are exactly the ones that delete or invalidate data",
   assert.deepEqual(destructive, ["folders delete", "git rotate-secret", "items rm"]);
   const rm = findCommand(["items", "rm"]);
   assert.equal(rm?.flags.find((f) => f.name === "yes")?.required, true);
+});
+
+test("--purge is marked destructive: it destroys a banished card forever", () => {
+  const purge = findCommand(["items", "rm"])?.flags.find((f) => f.name === "purge");
+  assert.equal(purge?.type, "boolean");
+  assert.equal(purge?.destructive, true);
+  assert.equal(findCommand(["items", "rm"])?.flags.find((f) => f.name === "yes")?.destructive, undefined);
+});
+
+test("items restore and shadow-realm list are in the schema and are not destructive", () => {
+  assert.equal(findCommand(["items", "restore"])?.destructive, false);
+  assert.equal(findCommand(["items", "restore"])?.args[0]?.name, "key");
+  const list = findCommand(["shadow-realm", "list"]);
+  assert.equal(list?.destructive, false);
+  assert.equal(list?.json, true);
+  assert.equal(list?.flags.find((f) => f.name === "project")?.type, "string");
 });
 
 test("the schema document reports the package version and every command", () => {

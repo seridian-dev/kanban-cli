@@ -15,8 +15,10 @@ UPDATE    kanban comment add WEB-12 --body "Progress: ...; next: ...; blocker: n
 QA        kanban items move WEB-12 --status in_review
 FINISH    kanban items move WEB-12 --status done (only after verifying the work)
 GITHUB    kanban gh sync --dry-run → kanban gh sync (issues mirror cards; Kanban wins) · kanban gh pr (open PR, card → review)
-DRY RUN   Agents: add --dry-run to any write (items create/update/move/rm/breakdown/distribute/bulk, comment add, sprints, projects create/update/move, folders create/rename/delete, gh pr, git connect/rotate-secret)
+DRY RUN   Agents: add --dry-run to any write (items create/update/move/rm/restore/breakdown/distribute/bulk, comment add, sprints, projects create/update/move, folders create/rename/delete, gh pr, git connect/rotate-secret)
           before running it, especially deletes: kanban items rm WEB-12 --yes --dry-run. Read wouldChange, then run the real command.
+SHADOW   kanban items rm WEB-12 --yes banishes (restorable) · kanban items restore WEB-12 · kanban shadow-realm list
+          kanban items rm WEB-12 --purge --yes destroys a banished card forever (owners and admins). Never use --purge unless asked.
 
 Project lookup: --project > KANBAN_PROJECT > nearest linked folder > saved default > account CLI default.
 Workspace lookup: --workspace > KANBAN_WORKSPACE > nearest linked folder > saved default > account CLI default.
@@ -27,7 +29,7 @@ Writes are validated by the server. Local settings live in ~/.config/kanban/conf
 Use --compact --limit N --json to keep large boards out of the context window.
 Login opens Kanban in your browser and asks you to approve this device. Over SSH or without a display it prints a URL
 and asks for a one-time code instead (--code forces this, --browser forces the browser). Login needs the user's terminal.
-Run 'kanban help' for the full reference. Never use --yes to delete unless requested.
+Run 'kanban help' for the full reference. Never use --yes to banish or --purge to destroy unless requested.
 SCHEMA   kanban schema → JSON of every command, flag, type, enum, and destructive action. Use it instead of parsing help.
 `;
 
@@ -75,7 +77,7 @@ READ
 WRITE
   Board, GitHub and git write commands take --dry-run: it validates and resolves keys exactly as the real run does,
   prints what would change (JSON: { dryRun: true, wouldChange: [...] }), exits 0, and sends no write.
-  Preview a delete with: kanban items rm WEB-12 --yes --dry-run (lists the whole subtree).
+  Preview a banish with: kanban items rm WEB-12 --yes --dry-run (lists the whole subtree).
   kanban projects create --key WEB --name "Name" [--description ..]
   kanban projects update WEB [--name "Name"] [--description ..] [--workspace acme]
         at least one of --name/--description; --description "" clears it; the key never changes
@@ -91,7 +93,10 @@ WRITE
   kanban items breakdown WEB-12 --text "a @sam\\nb"   (or pipe lines on stdin; epic→stories, others→subtasks)
   kanban items distribute WEB-12 --people sam,alex   (balances unassigned children by open load)
   kanban items bulk --ids WEB-1,WEB-2 [--status --assignee --priority --sprint NAME]
-  kanban items rm WEB-12 --yes                      deletes the whole subtree; --yes is mandatory
+  kanban items rm WEB-12 --yes                      banishes the whole subtree to the Shadow Realm (restorable); --yes is mandatory
+  kanban items restore WEB-12                       summons a banished card (and cards banished with it) back
+  kanban items rm WEB-12 --purge --yes              destroys a banished card and its subtree forever (owners/admins)
+  kanban shadow-realm list [--workspace acme --project WEB]   banished cards with who and when
   kanban comment add WEB-12 --body "..."
   kanban hooks install · kanban hooks set-item KEY · kanban hooks doctor
   kanban git connect --project WEB --provider github --repo owner/name
