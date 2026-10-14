@@ -1,26 +1,17 @@
 /**
- * Retry policy for the Convex client. Reads are retried on transient failures
- * (network errors, HTTP 5xx, the redacted "Server Error"). Writes are never retried:
- * the server has no idempotency keys yet (KAN-201), so a retried create could duplicate
+ * Write-side policy for the Convex client. Reads retry inside the HTTP helper (http.ts). A write is
+ * never retried: the server has no idempotency keys yet (KAN-201), so a retried create could duplicate
  * work. A transient write failure is reported with the read command that checks it.
  */
 import { getFunctionName } from "convex/server";
 import { UsageError } from "./lib.js";
 import type { CliConvexClient } from "./client.js";
-
-export interface RetryOptions {
-  /** Retries after the first attempt. 0 means one call, no retries. */
-  retries: number;
-  sleep: (ms: number) => Promise<void>;
-  /** Jitter source in [0, 1). */
-  random: () => number;
-}
+import { TransportError } from "./http.js";
 
 /** A write whose outcome is unknown after a transient failure. */
 export class TransientWriteError extends Error {}
 
-const BACKOFF_MS = [500, 1500];
-const DEFAULT_RETRIES = 2;
+const DEFAULT_RETRIES = 4;
 const MAX_RETRIES = 10;
 
 const NETWORK_CODES = new Set([
@@ -30,7 +21,10 @@ const NETWORK_CODES = new Set([
 
 const TRANSIENT_MESSAGE = /Server Error|Bad Gateway|Service Unavailable|Gateway Timeout|\bstatus 5\d\d\b|fetch failed|socket hang up|network error/i;
 
-/** Read `KANBAN_RETRIES`: a non-negative integer, default 2. Throws a UsageError otherwise. */
+/**
+ * Read `KANBAN_RETRIES`: the retries after the first attempt, an integer from 0 to 10, default 4.
+ * Throws a UsageError otherwise.
+ */
 export function readRetriesFromEnv(env: Record<string, string | undefined>): number {
   const raw = env.KANBAN_RETRIES;
   if (raw === undefined || raw === "") return DEFAULT_RETRIES;
@@ -39,8 +33,9 @@ export function readRetriesFromEnv(env: Record<string, string | undefined>): num
   return n;
 }
 
-/** True when a failure is worth retrying: it is not a server rule (ConvexError data) or a not-found. */
+/** True when a failure is worth treating as transient: a transport failure, or the kinds of server error that clear up. */
 export function isTransientError(e: unknown): boolean {
+  if (e instanceof TransportError) return true;
   if (e && typeof e === "object" && "data" in e && (e as { data?: unknown }).data !== undefined) return false;
   const message = e instanceof Error ? e.message : String(e);
   if (/\bnot found\b/i.test(message)) return false;
@@ -69,32 +64,24 @@ function functionName(ref: unknown): string {
 
 function writeFailureMessage(name: string): string {
   const check = CHECK_COMMAND[name] ?? DEFAULT_CHECK;
-  return `The write failed with a transient server error. It may or may not have been applied. Check with \`${check}\` before retrying, because a retry can duplicate it.`;
+  return `The write may or may not have been applied. Check with \`${check}\` before retrying, because a retry can duplicate it.`;
 }
 
 /**
- * Wraps the client. `query` retries transient failures with backoff (0.5 s, then 1.5 s, each
- * with up to 25% jitter). `mutation` is called once; a transient failure becomes a TransientWriteError.
+ * Wraps the client for writes. A mutation is called once; a transient failure becomes a
+ * TransientWriteError that names the check to run. Queries pass through unchanged, since the
+ * HTTP helper already retries them.
  */
-export function wrapClient(client: CliConvexClient, opts: RetryOptions): CliConvexClient {
+export function wrapClient(client: CliConvexClient): CliConvexClient {
   return {
-    async query(ref, args) {
-      for (let attempt = 0; ; attempt++) {
-        try {
-          return await client.query(ref, args);
-        } catch (e) {
-          if (attempt >= opts.retries || !isTransientError(e)) throw e;
-          const base = BACKOFF_MS[Math.min(attempt, BACKOFF_MS.length - 1)];
-          await opts.sleep(Math.round(base * (0.75 + opts.random() * 0.5)));
-        }
-      }
-    },
+    query: (ref, args) => client.query(ref, args),
     async mutation(ref, args) {
       try {
         return await client.mutation(ref, args);
       } catch (e) {
         if (!isTransientError(e)) throw e;
-        throw new TransientWriteError(writeFailureMessage(functionName(ref)));
+        const cause = e instanceof TransportError ? `${e.message} ` : "The write failed with a transient server error. ";
+        throw new TransientWriteError(`${cause}${writeFailureMessage(functionName(ref))}`);
       }
     },
   };

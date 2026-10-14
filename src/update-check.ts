@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { configFile } from "./config.js";
+import { createHttpFetch } from "./http.js";
 
 export type UpdateCache = { checkedAt: number; latest: string | null };
 export type UpdateResult = { current: string; latest: string | null; updateAvailable: boolean };
@@ -57,7 +58,8 @@ export async function checkForUpdate(options: { force?: boolean; fetcher?: typeo
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 1500);
     try {
-      const response = await (options.fetcher ?? fetch)(REGISTRY_URL, { signal: controller.signal });
+      // One attempt only: this runs after a command and must never delay it.
+      const response = await (options.fetcher ?? createHttpFetch({ retries: 0 }))(REGISTRY_URL, { signal: controller.signal });
       if (!response.ok) throw new Error("Registry request failed");
       const body = await response.json() as { version?: unknown };
       if (typeof body.version !== "string") throw new Error("Invalid registry response");

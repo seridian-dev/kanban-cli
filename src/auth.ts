@@ -9,6 +9,7 @@ import { createInterface } from "node:readline/promises";
 import { ConvexHttpClient } from "convex/browser";
 import { makeFunctionReference } from "convex/server";
 import { resolveBackendUrl } from "./backend.js";
+import { createHttpFetch } from "./http.js";
 import { UsageError } from "./lib.js";
 
 const authFile = join(homedir(), ".config", "kanban", "auth.json");
@@ -257,9 +258,11 @@ export type RedeemCode = (args: { code: string; verifier: string }) => Promise<u
 /** Calls the public Convex mutation `cliLogin:redeemCode` on the backend the site advertises. */
 export function convexRedeemer(site: string): RedeemCode {
   const redeemCode = makeFunctionReference<"mutation", { code: string; verifier: string }, unknown>("cliLogin:redeemCode");
+  // A redeem is a mutation, so it is sent once; the helper still tells "offline" from "server error".
+  const fetcher = createHttpFetch({ retries: 0, probeUrl: site });
   let client: Promise<ConvexHttpClient> | undefined;
   return async (args) => {
-    client ??= resolveBackendUrl(site).then((url) => new ConvexHttpClient(url));
+    client ??= resolveBackendUrl(site, fetcher).then((url) => new ConvexHttpClient(url, { fetch: fetcher }));
     return (await client).mutation(redeemCode, args);
   };
 }
