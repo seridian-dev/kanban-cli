@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1
+
+- Fix: refresh package-lock.json so the npm trusted-publishing workflow can install (0.3.0's tag could not publish).
+
 ## 0.3.0
 
 - `kanban items rm KEY --yes` now banishes the card and its subtree to the Shadow Realm instead of deleting it. The output names the restore command. Older CLI versions still call `workItems.remove`, which the server now banishes instead of deleting.
