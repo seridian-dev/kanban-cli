@@ -24,8 +24,12 @@ test("browser login validates callback state and stores credentials with owner-o
   const loginUrl = new URL(login);
   const callback = loginUrl.searchParams.get("callback");
   const state = loginUrl.searchParams.get("state");
+  assert.equal(loginUrl.pathname, "/cli/login");
   assert.ok(callback);
   assert.ok(state);
+  assert.match(state, /^[a-f0-9]{64}$/);
+  assert.equal(new URL(callback).hostname, "127.0.0.1");
+  assert.equal(new URL(callback).pathname, "/callback");
 
   const invalid = await fetch(callback, {
     method: "POST",

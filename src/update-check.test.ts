@@ -57,5 +57,8 @@ test("automatic notice is suppressed for JSON, opt-out, CI, and agent-help", () 
   assert.equal(shouldShowUpdateNotice({ stdoutIsTTY: true, command: ["items", "list"], env: { CI: "true" } }), false);
   assert.equal(shouldShowUpdateNotice({ stdoutIsTTY: true, command: ["agent-help"] }), false);
   assert.equal(shouldShowUpdateNotice({ stdoutIsTTY: false, command: ["items", "list"] }), false);
-  assert.equal(shouldShowUpdateNotice({ stdoutIsTTY: true, command: ["items", "list"] }), true);
+  // The positive case is independent of the runner's ambient environment.
+  // CI=true is intentionally set by GitHub Actions and must not leak into
+  // this assertion after CI suppression has already been tested explicitly.
+  assert.equal(shouldShowUpdateNotice({ stdoutIsTTY: true, command: ["items", "list"], env: {} }), true);
 });
