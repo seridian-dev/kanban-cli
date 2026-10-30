@@ -32,15 +32,17 @@
     "LICENSE"
   ],
   "scripts": {
+    "prepare": "npm run build && node -e \"const fs=require('node:fs'); for(const name of fs.readdirSync('dist')) if(name.endsWith('.test.js') || name.endsWith('.test.js.map') || name.endsWith('.test.d.ts')) fs.rmSync('dist/'+name)\" && lefthook install",
     "build": "tsc -p tsconfig.json",
-    "prepare": "npm run build && node -e \"const fs=require('node:fs'); for(const name of fs.readdirSync('dist')) if(name.endsWith('.test.js') || name.endsWith('.test.js.map') || name.endsWith('.test.d.ts')) fs.rmSync('dist/'+name)\"",
-    "test": "npm run build && node --test dist/auth.test.js dist/backend.test.js dist/config.test.js dist/hooks.test.js dist/http.test.js dist/update-check.test.js dist/gh-sync.test.js dist/dry-run.test.js dist/projects.test.js dist/folders.test.js dist/planning.test.js dist/schema.test.js dist/shadow-realm.test.js dist/retry.test.js && node dist/kanban.js agent-help"
+    "test": "npm run build && node --test dist/auth.test.js dist/backend.test.js dist/config.test.js dist/hooks.test.js dist/http.test.js dist/update-check.test.js dist/gh-sync.test.js dist/dry-run.test.js dist/projects.test.js dist/folders.test.js dist/planning.test.js dist/schema.test.js dist/shadow-realm.test.js dist/retry.test.js && node dist/kanban.js agent-help",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "convex": "^1.46.0"
   },
   "devDependencies": {
     "@types/node": "^22.19.15",
+    "lefthook": "^2.2.2",
     "typescript": "^5.9.2"
   },
   "publishConfig": {
