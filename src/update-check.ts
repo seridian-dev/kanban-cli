@@ -10,6 +10,13 @@ import { createHttpFetch } from "./http.js";
 export type UpdateCache = { checkedAt: number; latest: string | null };
 export type UpdateResult = { current: string; latest: string | null; updateAvailable: boolean };
 
+export type MinimumVersionInfo = { current: string; minimum: string; satisfies: boolean };
+
+/** Returns whether current satisfies a minimum. Throws on invalid semver. */
+export function satisfiesMinimum(current: string, minimum: string): boolean {
+  return compareSemver(current, minimum) >= 0;
+}
+
 const REGISTRY_URL = "https://registry.npmjs.org/@seridian/kanban-cli/latest";
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** The registry check must never delay a command for long: it aborts after 2 seconds (KAN-260). */
@@ -84,7 +91,7 @@ export function updateInstallCommand(): string {
 export function shouldShowUpdateNotice(options: { stdoutIsTTY?: boolean; json?: boolean; command?: string[]; env?: NodeJS.ProcessEnv } = {}): boolean {
   const env = options.env ?? process.env;
   const command = options.command ?? process.argv.slice(2);
-  return options.stdoutIsTTY === true && options.json !== true && !command.includes("--json") && env.KANBAN_NO_UPDATE !== "1" && env.KANBAN_NO_UPDATE_CHECK !== "1" && !env.CI && command[0] !== "agent-help" && command[0] !== "schema" && !(command[0] === "update" && command[1] === "check");
+  return options.stdoutIsTTY === true && options.json !== true && !command.includes("--json") && env.KANBAN_NO_UPDATE !== "1" && env.KANBAN_NO_UPDATE_CHECK !== "1" && !env.CI && command[0] !== "agent-help" && command[0] !== "schema" && !(command[0] === "update" && command[1] === "check") && command[0] !== "report" && command[0] !== "feedback";
 }
 
 // KAN-260: pre-run auto-update. When a newer npm release exists and the CLI is installed
@@ -157,7 +164,7 @@ export function shouldAutoUpdate(options: { argv?: string[]; env?: NodeJS.Proces
   if (/^(1|true)$/i.test(env.CI ?? "")) return false;
   if (argv.includes("--json") && options.stdoutIsTTY !== true) return false;
   if (isUnderNpx({ env })) return false;
-  if (["help", "agent-help", "schema"].includes(argv[0] ?? "")) return false;
+  if (["help", "agent-help", "schema", "report", "feedback"].includes(argv[0] ?? "")) return false;
   if (argv[0] === "update" && argv[1] === "check") return false;
   return true;
 }

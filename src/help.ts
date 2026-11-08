@@ -46,6 +46,9 @@ GET STARTED
   kanban context                            show which project this folder uses
   kanban defaults                           show effective workspace and project defaults and their source
   kanban update check                       check for a newer CLI version now
+  kanban report bug [--notes TEXT]          print a redacted bug report template + GitHub URL (nothing sent)
+  kanban report suggestion [--notes TEXT]   print a feature suggestion template + GitHub URL (nothing sent)
+  kanban feedback [--notes TEXT]            alias for 'report suggestion'
   kanban projects open WEB                  open the selected workspace project
   kanban links list                         list saved folder links
   kanban hooks install                      install local pre-commit and pre-push checks
