@@ -21,6 +21,77 @@ const REGISTRY_URL = "https://registry.npmjs.org/@seridian/kanban-cli/latest";
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** The registry check must never delay a command for long: it aborts after 2 seconds (KAN-260). */
 export const CHECK_TIMEOUT_MS = 2_000;
+
+const MIN_CACHE_FILE = () => join(dirname(configFile()), "min-version.json");
+const MIN_CACHE_TTL_MS = DAY_MS;
+
+type MinCache = { checkedAt: number; minimum: string | null; site?: string };
+
+async function readMinCache(): Promise<MinCache | undefined> {
+  try {
+    const parsed = JSON.parse(await readFile(MIN_CACHE_FILE(), "utf8")) as MinCache;
+    if (typeof parsed.checkedAt !== "number" || (typeof parsed.minimum !== "string" && parsed.minimum !== null)) return undefined;
+    return parsed;
+  } catch { return undefined; }
+}
+
+async function writeMinCache(entry: MinCache): Promise<void> {
+  const file = MIN_CACHE_FILE();
+  await mkdir(dirname(file), { recursive: true, mode: 0o700 });
+  await writeFile(file, `${JSON.stringify(entry)}\n`, { mode: 0o600 });
+}
+
+/**
+ * Fetches the site's /api/cli/config (bounded, cached) and returns the advertised
+ * minimumCliVersion if present and a valid semver string. Returns null when absent,
+ * offline, or on any error. Never throws to the caller.
+ */
+export async function getSiteMinimum(site: string, options: { force?: boolean; fetcher?: typeof fetch; now?: number } = {}): Promise<string | null> {
+  const now = options.now ?? Date.now();
+  let origin: string;
+  try { origin = new URL(site).origin; } catch { return null; }
+  const cached = await readMinCache();
+  if (!options.force && cached && now - cached.checkedAt < MIN_CACHE_TTL_MS && now >= cached.checkedAt) {
+    if (!cached.site || cached.site === origin) return cached.minimum;
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), CHECK_TIMEOUT_MS);
+  try {
+    const f = options.fetcher ?? createHttpFetch({ retries: 0, probeUrl: site });
+    const res = await f(new URL("/api/cli/config", origin).toString(), { signal: controller.signal, method: "GET" });
+    if (!res.ok) throw new Error("config fetch failed");
+    const data: unknown = await res.json();
+    const candidate = (data && typeof data === "object" && "minimumCliVersion" in data)
+      ? (data as { minimumCliVersion?: unknown }).minimumCliVersion : undefined;
+    const minimum = (typeof candidate === "string" && candidate.trim()) ? candidate.trim() : null;
+    // Validate looks like semver-ish; if not, ignore (future-proof)
+    if (minimum) {
+      try { compareSemver("0.0.0", minimum); } catch { return null; }
+    }
+    await writeMinCache({ checkedAt: now, minimum, site: origin });
+    return minimum;
+  } catch {
+    // On any failure (offline, timeout, bad JSON, etc.) keep previous cached value if any, else null.
+    return cached && (!cached.site || cached.site === origin) ? cached.minimum : null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Human upgrade command for a specific minimum (or latest). */
+export function formatUpgradeCommand(target?: string): string {
+  const base = updateInstallCommand();
+  return target ? `${base}@${target}` : base;
+}
+
+/** Stable message for a mandatory upgrade requirement. */
+export function formatUpgradeRequired(current: string, minimum: string): string {
+  return `This version of the @seridian/kanban-cli (${current}) is no longer supported.
+Minimum supported version: ${minimum}.
+Run: ${formatUpgradeCommand(minimum)}
+
+Your saved login (~/.config/kanban/auth.json) and configuration are preserved.`;
+}
 const packageJsonPath = fileURLToPath(new URL("../package.json", import.meta.url));
 const cacheFile = () => join(dirname(configFile()), "update-check.json");
 

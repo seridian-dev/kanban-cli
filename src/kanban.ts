@@ -20,7 +20,7 @@ import { execFileSync } from "node:child_process";
 import { extractItemKeys, hooksStatus, installHooks, outgoingCommitMessages, parsePushRefs, readActiveItem, setActiveItem, validateHookItems } from "./hooks.js";
 import { readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { autoUpdate, checkForUpdate, shouldShowUpdateNotice, updateInstallCommand, type AutoUpdateOutcome } from "./update-check.js";
+import { autoUpdate, checkForUpdate, currentVersion, getSiteMinimum, satisfiesMinimum, shouldShowUpdateNotice, updateInstallCommand, formatUpgradeRequired, type AutoUpdateOutcome } from "./update-check.js";
 import { buildReport } from "./feedback.js";
 import { resolve } from "node:path";
 import { classifyError, compactItems, describeDryRun, dryRunPayload, flagFields, formatTable, formatTree, parseArgs, parseKey, parseProjectUpdate, pickSprint, readAll, splitList, UsageError, type Parsed, type WouldChange } from "./lib.js";
@@ -107,7 +107,18 @@ async function runMain(argv: string[], deps: CliDeps) {
   if (pos[0] === "update" && pos[1] === "check") {
     try {
       const result = await checkForUpdate({ force: true });
-      out(result, result.updateAvailable ? `Update available: ${result.current} → ${result.latest}` : result.latest ? `Up to date (${result.current})` : "Could not check for updates.");
+      const min = await getSiteMinimum(localSite, { fetcher: deps.fetch }).catch(() => null);
+      const current = result.current;
+      let minInfo: { minimum: string; satisfies: boolean } | null = null;
+      if (min && typeof min === "string") {
+        try { minInfo = { minimum: min, satisfies: satisfiesMinimum(current, min) }; } catch { /* ignore bad semver from site */ }
+      }
+      const payload = { ...result, ...(minInfo ? { minimumVersion: minInfo.minimum, satisfiesMinimum: minInfo.satisfies } : {}) };
+      const human = result.updateAvailable
+        ? `Update available: ${result.current} → ${result.latest}`
+        : result.latest ? `Up to date (${result.current})` : "Could not check for updates.";
+      const minLine = minInfo && !minInfo.satisfies ? `\nMinimum supported: ${minInfo.minimum}. Run: ${updateInstallCommand()}@${minInfo.minimum}` : "";
+      out(payload, human + minLine);
     } catch { out({ checked: false }, "Could not check for updates."); }
     return;
   }
