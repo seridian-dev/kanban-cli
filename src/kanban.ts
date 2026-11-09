@@ -20,7 +20,8 @@ import { execFileSync } from "node:child_process";
 import { extractItemKeys, hooksStatus, installHooks, outgoingCommitMessages, parsePushRefs, readActiveItem, setActiveItem, validateHookItems } from "./hooks.js";
 import { readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { autoUpdate, checkForUpdate, shouldShowUpdateNotice, updateInstallCommand, type AutoUpdateOutcome } from "./update-check.js";
+import { autoUpdate, checkForUpdate, currentVersion, getSiteMinimum, satisfiesMinimum, shouldShowUpdateNotice, updateInstallCommand, formatUpgradeRequired, type AutoUpdateOutcome } from "./update-check.js";
+import { buildReport } from "./feedback.js";
 import { resolve } from "node:path";
 import { classifyError, compactItems, describeDryRun, dryRunPayload, flagFields, formatTable, formatTree, parseArgs, parseKey, parseProjectUpdate, pickSprint, readAll, splitList, UsageError, type Parsed, type WouldChange } from "./lib.js";
 import { findCommand, schemaDocument } from "./schema.js";
@@ -98,18 +99,53 @@ async function runMain(argv: string[], deps: CliDeps) {
     return;
   }
 
-  if (pos[0] === "update" && pos[1] === "check") {
-    try {
-      const result = await checkForUpdate({ force: true });
-      out(result, result.updateAvailable ? `Update available: ${result.current} → ${result.latest}` : result.latest ? `Up to date (${result.current})` : "Could not check for updates.");
-    } catch { out({ checked: false }, "Could not check for updates."); }
-    return;
-  }
-
   const [group, sub, arg] = pos;
   const config = await readConfig();
   const auth = await readAuth();
   const localSite = str(flags.url) ?? process.env.KANBAN_URL ?? config.site ?? auth?.site ?? DEFAULT_KANBAN_URL;
+
+  if (pos[0] === "update" && pos[1] === "check") {
+    try {
+      const result = await checkForUpdate({ force: true });
+      const min = await getSiteMinimum(localSite, { fetcher: deps.fetch }).catch(() => null);
+      const current = result.current;
+      let minInfo: { minimum: string; satisfies: boolean } | null = null;
+      if (min && typeof min === "string") {
+        try { minInfo = { minimum: min, satisfies: satisfiesMinimum(current, min) }; } catch { /* ignore bad semver from site */ }
+      }
+      const payload = { ...result, ...(minInfo ? { minimumVersion: minInfo.minimum, satisfiesMinimum: minInfo.satisfies } : {}) };
+      const human = result.updateAvailable
+        ? `Update available: ${result.current} → ${result.latest}`
+        : result.latest ? `Up to date (${result.current})` : "Could not check for updates.";
+      const minLine = minInfo && !minInfo.satisfies ? `\nMinimum supported: ${minInfo.minimum}. Run: ${updateInstallCommand()}@${minInfo.minimum}` : "";
+      out(payload, human + minLine);
+    } catch { out({ checked: false }, "Could not check for updates."); }
+    return;
+  }
+
+  if (pos[0] === "report" || pos[0] === "feedback") {
+    const isSuggestion = pos[0] === "feedback" || sub === "suggestion";
+    const type = isSuggestion ? "suggestion" : "bug";
+    const notes = str(flags.notes);
+    const reportCommand = argv.join(" ");
+    try {
+      const built = await buildReport({ type, command: reportCommand, notes, site: localSite });
+      if (json) {
+        out({ ...built.report, submitUrl: built.submitUrl, bugsUrl: built.bugsUrl }, JSON.stringify({ report: built.report, submitUrl: built.submitUrl, bugsUrl: built.bugsUrl }));
+      } else {
+        console.log(built.markdown);
+        console.log("");
+        console.log(`Submit at: ${built.submitUrl}`);
+        console.log(`(Opens the GitHub new-issue form with the template above. Nothing is posted automatically.)`);
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (json) console.error(JSON.stringify({ error: msg, code: 1 }));
+      else console.error(`error: ${msg}`);
+      process.exitCode = 1;
+    }
+    return;
+  }
   if (pos[0] === "config") {
     if (!sub || sub === "show") return out(config, `Site: ${config.site ?? DEFAULT_KANBAN_URL}\nUser: ${config.user ?? "not set"}\nDefault workspace: ${config.workspace ?? "not set"}\nDefault project: ${config.project ?? "not set"}\nProject links: ${config.links?.length ?? 0}\nConfig: ~/.config/kanban/config.json (no credentials stored here)`);
     if (sub === "set") {

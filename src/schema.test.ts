@@ -9,7 +9,7 @@ import { COMMANDS, booleanFlagNames, findCommand, schemaDocument, schemaVersion 
 const KANBAN = new URL("./kanban.js", import.meta.url).pathname;
 
 /** Groups whose second word is a subcommand (`kanban items get`), not an argument. */
-const GROUPS_WITH_SUBCOMMANDS = new Set(["auth", "projects", "folders", "items", "comment", "sprints", "git", "gh", "links", "hooks", "config", "update", "shadow-realm"]);
+const GROUPS_WITH_SUBCOMMANDS = new Set(["auth", "projects", "folders", "items", "comment", "sprints", "git", "gh", "links", "hooks", "config", "update", "shadow-realm", "report"]);
 
 function helpCommandKeys(help: string): Set<string> {
   const keys = new Set<string>();

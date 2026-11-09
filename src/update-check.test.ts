@@ -4,7 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { autoUpdate, autoUpdateHint, CHECK_TIMEOUT_MS, compareSemver, checkForUpdate, isGlobalInstall, isUnderNpx, shouldAutoUpdate, shouldShowUpdateNotice } from "./update-check.js";
+import { autoUpdate, autoUpdateHint, CHECK_TIMEOUT_MS, compareSemver, checkForUpdate, formatUpgradeCommand, formatUpgradeRequired, getSiteMinimum, isGlobalInstall, isUnderNpx, satisfiesMinimum, shouldAutoUpdate, shouldShowUpdateNotice } from "./update-check.js";
 
 const tempDirs: string[] = [];
 const originalConfigFile = process.env.KANBAN_CONFIG_FILE;
@@ -200,4 +200,41 @@ test("auto-update prints one hint and continues when the installer fails", async
   assert.equal(hints.length, 1);
   assert.match(hints[0]!, /99\.0\.0/);
   assert.match(autoUpdateHint("99.0.0"), /to 99\.0\.0/);
+});
+
+test("satisfiesMinimum uses semver ordering", () => {
+  assert.equal(satisfiesMinimum("0.3.2", "0.3.2"), true);
+  assert.equal(satisfiesMinimum("0.3.2", "0.3.1"), true);
+  assert.equal(satisfiesMinimum("0.3.2", "0.4.0"), false);
+  assert.equal(satisfiesMinimum("1.0.0-alpha", "1.0.0"), false);
+});
+
+test("getSiteMinimum returns null on bad site or network, caches on success, and is bounded", async () => {
+  await configPath();
+  let calls = 0;
+  const fetcher = (async (url: string) => {
+    calls++;
+    if (String(url).includes("/api/cli/config")) return Response.json({ minimumCliVersion: "0.4.0" });
+    return Response.json({ version: "0.4.0" });
+  }) as typeof fetch;
+  const first = await getSiteMinimum("https://kanban.seridian.dev", { fetcher, now: 1 });
+  assert.equal(first, "0.4.0");
+  const second = await getSiteMinimum("https://kanban.seridian.dev", { fetcher, now: 2 });
+  assert.equal(second, "0.4.0");
+  assert.equal(calls, 1, "cached within TTL");
+  const bad = await getSiteMinimum("not-a-url", { fetcher });
+  assert.equal(bad, null);
+  // force on a *different* origin with a failing fetcher yields null (no prior cache for that origin)
+  const forced = await getSiteMinimum("https://other.example", { fetcher: (async () => { throw new Error("boom"); }) as typeof fetch, force: true });
+  assert.equal(forced, null);
+});
+
+test("formatUpgradeCommand and formatUpgradeRequired produce stable actionable text without secrets", () => {
+  const up = formatUpgradeCommand("0.4.0");
+  assert.match(up, /npm i -g @seridian\/kanban-cli@0\.4\.0|bun add -g/);
+  const msg = formatUpgradeRequired("0.3.0", "0.4.0");
+  assert.match(msg, /no longer supported/);
+  assert.match(msg, /0\.4\.0/);
+  assert.match(msg, /auth\.json/);
+  assert.equal(/eyJ|token/i.test(msg), false);
 });
