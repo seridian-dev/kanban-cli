@@ -8,6 +8,8 @@ import { api } from "./api.js";
 import type { Id } from "./dataModel.js";
 import type { CliConvexClient } from "./client.js";
 import { AGENT_HELP, FULL_HELP } from "./help.js";
+import { CommandError, runAgents } from "./agents.js";
+import { mcpCommand } from "./mcp.js";
 import { DEFAULT_KANBAN_URL, resolveBackendUrl } from "./backend.js";
 import { browserLogin, clearToken, codeLogin, finishCodeLogin, openBrowser, readAuth, selectLoginMode } from "./auth.js";
 import { detectGithubRepo, gitRoot, linkedContext, readConfig, writeConfig } from "./config.js";
@@ -103,6 +105,12 @@ async function runMain(argv: string[], deps: CliDeps) {
   const config = await readConfig();
   const auth = await readAuth();
   const localSite = str(flags.url) ?? process.env.KANBAN_URL ?? config.site ?? auth?.site ?? DEFAULT_KANBAN_URL;
+
+  if (pos[0] === "mcp") {
+    // Prints the remote MCP URL and setup text only: no backend call, and no credential is read or printed.
+    console.log(mcpCommand(flags, process.env));
+    return;
+  }
 
   if (pos[0] === "update" && pos[1] === "check") {
     try {
@@ -400,6 +408,12 @@ async function runMain(argv: string[], deps: CliDeps) {
         return out(user, `${user.name ?? "Kanban user"} <${user.email}>`);
       }
       break;
+    }
+    case "agents": {
+      // Identity is the stored `kanban login` session (already on the client). The token is never printed.
+      const workspace = sub === "revoke" ? undefined : await workspaceSlug();
+      const result = await runAgents({ client, sub, arg, flags, signedIn: Boolean(auth?.token), workspace });
+      return out(result.data, result.human);
     }
     case "folders": {
       if (sub === "list") {
@@ -877,11 +891,11 @@ async function bootstrap(): Promise<void> {
     }
   }).catch((e) => {
     const json = process.argv.includes("--json");
-    let message = e instanceof CliError || e instanceof UsageError || e instanceof TransportError ? e.message : cleanServerError(e);
+    let message = e instanceof CliError || e instanceof CommandError || e instanceof UsageError || e instanceof TransportError ? e.message : cleanServerError(e);
     if (/unauthenticated|not authenticated|invalid auth token|invalid jwt/i.test(message)) {
       message += "\nSign in or refresh this device with `kanban login`, then retry.";
     }
-    const code = e instanceof CliError ? e.code : e instanceof UsageError ? 2 : e instanceof TransportError ? e.exitCode : classifyError(message);
+    const code = e instanceof CliError ? e.code : e instanceof CommandError ? e.code : e instanceof UsageError ? 2 : e instanceof TransportError ? e.exitCode : classifyError(message);
     if (json) console.error(JSON.stringify({ error: message, code }));
     else console.error(`error: ${message}`);
     process.exit(code);
