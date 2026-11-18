@@ -6,6 +6,14 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { extractItemKeys, hookScript, hooksStatus, installHooks, outgoingCommitMessages, parsePushRefs, setActiveItem, readActiveItem, validateHookItems } from "./hooks.js";
 
+// Git exports GIT_DIR, GIT_INDEX_FILE and friends to hook processes. When this
+// suite runs from a pre-commit or pre-push hook, those point the `git init`,
+// `git config` and `git commit` calls below at the real repository instead of
+// the temp directories, so drop them before anything spawns git.
+for (const name of Object.keys(process.env)) {
+  if (name.startsWith("GIT_")) delete process.env[name];
+}
+
 test("pre-push refs parse and malformed input fails closed", () => {
   assert.deepEqual(parsePushRefs("refs/heads/main abc refs/heads/main def\n"), [
     { localRef: "refs/heads/main", localSha: "abc", remoteRef: "refs/heads/main", remoteSha: "def" },
