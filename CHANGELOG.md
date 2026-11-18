@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- New `kanban mcp [--client claude|codex|chatgpt|grok] [--mcp-url URL]` prints the remote MCP URL (`https://kanban.seridian.dev/mcp`) and the setup for each AI client. It never reads or prints a credential. ChatGPT and Grok say to add the URL and sign in when prompted.
+- New `kanban agents list|create|revoke --workspace SLUG` manages agent credentials. It uses the stored `kanban login` session. `create` prints the credential once; `revoke` ends every credential of an agent at once.
 - The CLI now updates itself. Once per day it checks npm (2-second timeout, cached in `~/.config/kanban/update-check.json`); when a newer version is published and the CLI is installed globally, it installs the release and re-runs the original command with the new version. The check is skipped for `CI=true`, `KANBAN_NO_UPDATE=1`, `--json` without a terminal, and npx runs; any failure prints one hint and the command continues.
 - Cards in the Shadow Realm can no longer be destroyed. `kanban items rm KEY --purge` now exits 2 with "Cards in the Shadow Realm can't be destroyed. Use `kanban items restore KEY` to bring one back." and sends nothing, with or without `--yes` or `--dry-run`. The purge path and its `workItems.destroyForever` call were removed from the CLI.
 - `kanban schema` no longer marks `--purge` as destructive; it is listed as refused.

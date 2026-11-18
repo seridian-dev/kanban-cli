@@ -113,6 +113,8 @@ kanban comment add WEB-12 --body "..."
 kanban changelog WEB [--write CHANGELOG.md]
 kanban git status --project WEB
 kanban gh sync --project WEB --dry-run
+kanban mcp --client codex
+kanban agents list --workspace SLUG
 kanban agent-help
 ```
 
@@ -136,6 +138,26 @@ kanban schema items create           # one command
 Each command entry has `command`, `summary`, `args`, `flags`, `json`, and `destructive`. Flag types are `string`, `boolean`, `number`, and `list` (comma-separated). `values` lists the accepted values where the CLI enforces them, such as statuses, types, and priorities. The schema is checked by tests against the help text and the parser's boolean flags, so a command added to the help text without a schema entry fails `npm test`. An unknown command name exits `3` and prints a JSON error to stderr.
 
 Global options `--workspace` and `--url` are not listed per command; they are set with `KANBAN_WORKSPACE`, `KANBAN_URL`, or `kanban config set`.
+
+## Remote MCP and agent credentials
+
+`kanban mcp` prints the remote MCP URL, `https://kanban.seridian.dev/mcp`, and a ready-to-paste setup for Claude Code, Codex, ChatGPT or Grok. Use `--client NAME` for one client. Override the URL with `KANBAN_MCP_URL` or `--mcp-url`; it must be https (or http on localhost only) and must not carry a query string. The command makes no network call and never reads or prints a credential.
+
+- **Claude Code and Codex** read a pasted agent credential from `KANBAN_TOKEN`. The snippets refer to that variable only.
+- **ChatGPT and Grok** add the URL and sign in when the app prompts you. Kanban's OAuth sign-in handles it, so no credential is pasted.
+
+`kanban agents` manages the agent credentials for a workspace. It uses the session from `kanban login`, so run that first. Name the workspace with `--workspace SLUG`, `KANBAN_WORKSPACE`, a linked folder, or the saved default. The session token is never printed.
+
+```sh
+kanban login
+kanban agents create --workspace acme --name "Claude Code" --client claude_code --scopes read,write --days 30 [--projects WEB,KAN]
+kanban agents list --workspace acme
+kanban agents revoke AGENT_ID
+```
+
+`agents create` prints the `kbn_agt_` credential once. Store it in your client's secret setting right away; it cannot be shown again. If it is lost, create a new credential and revoke the old one. `agents revoke` ends every credential the agent has at once, and it cannot be undone.
+
+Exit codes for `kanban agents`: `1` when you are not signed in (run `kanban login`), `2` for invalid flags, and `3` when the workspace, a `--projects` key, or the agent is not found.
 
 ## Agent safety
 

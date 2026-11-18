@@ -142,6 +142,31 @@ const SPECS: CommandSpec[] = [
     flags: [projectFlag, str("assignee", "Assignee handle. Defaults to the signed-in user.")], json: true, destructive: false,
   },
   { command: "plan", summary: "Active sprint at a glance: ready, blocked, in progress, review, done, points.", args: [], flags: [projectFlag], json: true, destructive: false },
+  {
+    command: "mcp", summary: "Print the remote MCP URL and a setup for each AI client. Never reads or prints a credential.", args: [],
+    flags: [str("client", "Client setup to print. Omit for every client.", false, ["claude", "codex", "chatgpt", "grok"]), str("mcp-url", "MCP URL to print: https, or http on localhost only, no query string.")],
+    json: false, destructive: false,
+  },
+  {
+    command: "agents list", summary: "List agent credentials in a workspace. Needs a signed-in session (kanban login).", args: [],
+    flags: [str("workspace", "Workspace slug override.")], json: true, destructive: false,
+  },
+  {
+    command: "agents create", summary: "Create an agent credential. The token is printed once; it cannot be shown again.", args: [],
+    flags: [
+      str("workspace", "Workspace slug override."),
+      str("name", "Agent name.", true),
+      str("client", "Client the agent runs in.", true, ["claude_code", "codex", "chatgpt", "claude", "grok", "other"]),
+      list("scopes", "Comma-separated scopes: read, write, close. Default read."),
+      num("days", "Expiry in days, 1 to 365."),
+      list("projects", "Comma-separated project keys the agent may use, e.g. WEB,KAN."),
+    ],
+    json: true, destructive: false,
+  },
+  {
+    command: "agents revoke", summary: "Revoke every credential of an agent at once. The credentials stop working immediately and cannot be restored.",
+    args: [{ name: "agent-id", required: true, description: "Agent id from agents list." }], flags: [], json: true, destructive: true,
+  },
   { command: "agent-help", summary: "Print the short coding-agent workflow.", args: [], flags: [], json: false, destructive: false },
   { command: "help", summary: "Print the full human-readable command reference.", args: [], flags: [], json: false, destructive: false },
   {

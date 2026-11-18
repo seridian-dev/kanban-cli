@@ -3,6 +3,8 @@ export const AGENT_HELP = `KANBAN CLI — agent quickstart (token-efficient)
 SETUP  kanban login  (site defaults to https://kanban.seridian.dev)
 AUTH   kanban login  → browser sign-in  ·  kanban login --code  → over SSH/headless, type a one-time code  ·  kanban auth whoami  ·  kanban logout
 LOCAL  kanban link --workspace acme --project WEB  → remember this repo  ·  kanban context
+MCP    kanban mcp --client claude|codex|chatgpt|grok  → remote MCP URL + setup (never prints a credential; ChatGPT/Grok sign in when prompted)
+AGENTS kanban agents list|create|revoke --workspace acme  (needs kanban login; create prints the credential once)
 
 FIRST RUN  kanban login → kanban auth whoami → kanban projects list → kanban link --project KEY
 RENAME    kanban projects update WEB --name "Web app" [--description "..."]  (owners and admins; key stays WEB)
@@ -55,6 +57,11 @@ GET STARTED
   kanban hooks set-item WEB-12              set this repository's active work item
   kanban hooks doctor                       inspect hook and active-item setup
   kanban config                             show saved site, user, and default project
+  kanban mcp [--client claude|codex|chatgpt|grok]  remote MCP URL and setup per AI client (never prints a credential)
+  kanban agents list --workspace acme              agent credentials in a workspace (needs kanban login)
+  kanban agents create --workspace acme --name N --client claude_code [--scopes read,write --days 30 --projects WEB,KAN]
+                                                   prints the credential once; store it right away
+  kanban agents revoke AGENT_ID                    ends every credential of that agent at once
   kanban agent-help                         get the coding-agent workflow
   kanban schema [COMMAND WORDS]             JSON schema of commands, flags, enums, and destructive actions
   Kanban discovers the service from its website.

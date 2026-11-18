@@ -70,6 +70,8 @@ Read the card before editing it. Follow `docs/AGENT_WORKFLOW.md`, keep updates
 small, and leave a progress comment. Do not mark work done unless it is complete.
 ```
 
+To connect an AI client to Kanban over MCP, run `kanban mcp --client claude` (or `codex`, `chatgpt`, `grok`); it prints the URL and the setup. Create the credential that the client needs with `kanban agents create`, after `kanban login`. See [Remote MCP and agent credentials](docs/CLI.md#remote-mcp-and-agent-credentials).
+
 All commands are listed in the [CLI guide](docs/CLI.md). The source repository is [seridian-dev/kanban-cli](https://github.com/seridian-dev/kanban-cli).
 
 ## Develop the CLI
