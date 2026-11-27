@@ -38,6 +38,20 @@ class CliError extends Error {
 
 const usage = (m: string) => new CliError(m, 2);
 
+const STATUSES = ["backlog", "todo", "in_progress", "in_review", "done"] as const;
+const STATUS_ALIASES: Record<string, string> = { review: "in_review", "in-review": "in_review", "in-progress": "in_progress", progress: "in_progress", doing: "" };
+
+/** --status accepts one or more statuses separated by spaces or commas ("review" means in_review). */
+function parseStatuses(raw: string | undefined): string[] | undefined {
+  if (raw === undefined) return undefined;
+  const parts = raw.split(/[\s,]+/).filter(Boolean).map((p) => STATUS_ALIASES[p.toLowerCase()] ?? p.toLowerCase());
+  const bad = parts.filter((p) => !(STATUSES as readonly string[]).includes(p));
+  if (!parts.length || bad.length) {
+    throw usage(`Unknown --status ${JSON.stringify(raw)}. Use one or more of: ${STATUSES.join(", ")} (comma or space separated).`);
+  }
+  return [...new Set(parts)];
+}
+
 function cleanServerError(e: unknown): string {
   // Server rules throw ConvexError; its data is the exact message (production redacts plain Errors).
   if (e && typeof e === "object" && "data" in e && typeof (e as { data: unknown }).data === "string") return (e as { data: string }).data;
@@ -642,17 +656,20 @@ async function runMain(argv: string[], deps: CliDeps) {
         if (limit !== undefined && (!Number.isInteger(limit) || limit < 1 || limit > 100)) {
           throw usage("--limit must be a whole number from 1 to 100");
         }
-        const allRows = await client.query(api.agentApi.search, {
+        const statuses = parseStatuses(str(flags.status));
+        const base = {
           projectKey: await project(),
           workspaceSlug: await workspaceForProject(await project()),
           q: str(flags.q),
-          status: str(flags.status) as never,
           assignee: str(flags.assignee),
           type: str(flags.type) as never,
           epicKey: str(flags.epic),
           limit,
-        });
-        const rows = allRows;
+        };
+        // The server filters one status at a time; several statuses are one query each, in the order given.
+        const rows: Awaited<ReturnType<CliConvexClient["query"]>>[] = [];
+        for (const status of statuses ?? [undefined]) rows.push(...(await client.query(api.agentApi.search, { ...base, status: status as never })));
+        if (limit !== undefined) rows.splice(limit);
         const data = flags.compact === true ? compactItems(rows) : rows;
         return out(data, rows.length ? formatTable(["KEY", "TYPE", "STATUS", "ASSIGNEE", "TITLE"], rows.map((r) => [r.key, r.type, r.status, r.assignee ?? "-", r.title])) : "(no items)");
       }

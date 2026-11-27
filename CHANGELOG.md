@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.5
+
+- `kanban items list --status` accepts several statuses, separated by commas or spaces (`--status "todo,in_progress"`). `review` means `in_review`. An unknown status now exits 2 with the list of valid statuses before anything is sent; it used to reach the server and fail with a validator error.
+
 ## 0.3.4
 
 - Maintenance release with no code changes. It refreshes the package's published maintainer contact to support@seridian.dev.
