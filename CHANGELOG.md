@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.4
+
+- Maintenance release with no code changes. It refreshes the package's published maintainer contact to support@seridian.dev.
+
 ## 0.3.3
 
 - New `kanban mcp [--client claude|codex|chatgpt|grok] [--mcp-url URL]` prints the remote MCP URL (`https://kanban.seridian.dev/mcp`) and the setup for each AI client. It never reads or prints a credential. ChatGPT and Grok say to add the URL and sign in when prompted.
