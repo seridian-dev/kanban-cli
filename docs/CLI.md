@@ -78,6 +78,8 @@ Sign out on this computer with `kanban logout`. This removes its saved session; 
 
 ```sh
 kanban items list --status in_progress --limit 15 --compact --json
+# Several statuses: comma or space separated; `review` means in_review
+kanban items list --status "in_progress,in_review" --compact --json
 kanban items get WEB-12 --json
 kanban items move WEB-12 --status in_progress
 kanban comment add WEB-12 --body "Progress: implementation started"

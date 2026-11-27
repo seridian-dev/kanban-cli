@@ -76,7 +76,7 @@ HIERARCHY  epic > story|task|bug > subtask. Server rejects invalid parents/cycle
 
 READ
   kanban tree WEB                               indented hierarchy of a project
-  kanban items list --project WEB [--status S --assignee A --type T --epic WEB-1 --q text --limit N --compact]
+  kanban items list --project WEB [--status "todo,in_progress" --assignee A --type T --epic WEB-1 --q text --limit N --compact]
   kanban items get WEB-12                       breadcrumb, children, dependencies, comments
   kanban next [--project WEB --assignee NAME]    next card to work on: ready, highest priority, active sprint first
   kanban plan [--project WEB]                   active sprint at a glance: ready, blocked, in progress, review, done, points
